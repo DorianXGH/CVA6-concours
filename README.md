@@ -1,3 +1,5 @@
+[![Build Status](https://45.66.110.1:4269/api/badges/chatpion/Thales-CVA6/status.svg)](https://45.66.110.1:4269/chatpion/Thales-CVA6)
+
 # Getting started
 
 To get more familiar with CVA6 architecture, a partial documentation is available:
