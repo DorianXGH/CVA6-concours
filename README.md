@@ -176,6 +176,9 @@ For instance, if you want to run Dhrystone application, you will have to run :
 $ make sim APP=dhrystone
 
 ```
+
+**NOTE: running the last command twice seems to work...**
+
 **This command:**
 - Compiles CVA6 architecture and testbench with Questa Sim tool.
 - Compiles the software application to be run on CVA6 with RISCV tool chain.
