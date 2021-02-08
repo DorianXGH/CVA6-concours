@@ -76,14 +76,30 @@ module ariane_tb;
         .jtag_TDO_driven
     );
 
+
+    longint unsigned cycles;
+    longint unsigned max_cycles;
+    bit cycle_count_enabled;
+
     // Clock process
     initial begin
         clk_i = 1'b0;
+        rst_ni = 1'b0;
         repeat(8)
             #(CLOCK_PERIOD/2) clk_i = ~clk_i;
+        rst_ni = 1'b1;
         forever begin
             #(CLOCK_PERIOD/2) clk_i = 1'b1;
             #(CLOCK_PERIOD/2) clk_i = 1'b0;
+
+            if (cycle_count_enabled && $value$plusargs("MAX_CYCLES=%d", max_cycles)) begin  // MAX_CYCLES defined
+                if (cycles > max_cycles) begin
+                    $display("Simulation reached maximum cycle count of %d", max_cycles);
+                    $finish;
+                end
+            end
+
+            cycles++;
         end
     end
 
@@ -130,6 +146,7 @@ module ariane_tb;
     
         // we have set dpc and loaded the binary, we can go now
         $display("[TB] %t - Resuming the CORE", $realtime);
+        cycle_count_enabled = 1'b1;
         debug_mode_if.resume_harts(jtag_TCK, jtag_TMS, jtag_TRSTn, jtag_TDI, jtag_TDO_data);
 
     end
