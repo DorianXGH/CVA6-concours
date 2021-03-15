@@ -53,7 +53,8 @@ bmarks = \
 	multiply \
 	dhrystone \
 	spmv \
-	pmp 
+	pmp \
+	divide
 
 #--------------------------------------------------------------------
 # Build rules

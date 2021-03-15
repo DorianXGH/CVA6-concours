@@ -1,0 +1,4 @@
+*.bin
+*.mem
+*.riscv
+*.a
