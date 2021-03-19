@@ -30,3 +30,22 @@ data_rvalid   |   1 2 3
 data_rdata    |   1 2 3
 
 */
+
+module prefetch_unit import ariane_pkg::*; import wt_cache_pkg::*; #(
+  parameter ariane_pkg::ariane_cfg_t    ArianeCfg = ariane_pkg::ArianeDefaultConfig // contains cacheable regions
+) 
+(
+    input  dcache_req_i_t                   cpu_port_i,
+    output dcache_req_o_t                   cpu_port_o,
+
+    output dcache_req_i_t                   cache_port_o,
+    input  dcache_req_o_t                   cache_port_i
+)
+    dcache_req_i_t  pf_port_o;
+    dcache_req_o_t  pf_port_deadend;
+    dcache_req_o_t  pf_port_i;
+    logic cpu_has_control = 1'b1;
+    assign cache_port_o = cpu_has_control ? cpu_port_i : pf_port_o;
+    assign cpu_port_o = cpu_has_control ? cache_port_i : pf_port_deadend;
+    assign pf_port_i = cpu_has_control ? pf_port_deadend : cache_port_i;
+endmodule
