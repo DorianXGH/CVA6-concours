@@ -133,7 +133,7 @@ package ariane_pkg;
                                                       // to uniquely identify the entry in the scoreboard
     localparam ASID_WIDTH    = (riscv::XLEN == 64) ? 16 : 1;
     localparam BITS_SATURATION_COUNTER = 2;
-    localparam NR_COMMIT_PORTS = 2;
+    localparam NR_COMMIT_PORTS = 3;
 
     localparam ENABLE_RENAME = 1'b0;
 
