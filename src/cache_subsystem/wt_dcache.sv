@@ -160,6 +160,25 @@ module wt_dcache import ariane_pkg::*; import wt_cache_pkg::*; #(
 ///////////////////////////////////////////////////////
 // read controllers (LD unit and PTW/MMU)
 ///////////////////////////////////////////////////////
+  dcache_req_i_t            pf_port_i;
+  dcache_req_o_t            pf_port_o;
+
+  dcache_req_i_t      [1:0] ports_i;
+  dcache_req_o_t      [1:0] ports_o;
+
+  assign ports_i[0] = req_ports_i[0];
+  assign req_ports_o[0] = ports_o[0];
+
+  assign ports_i[1] = pf_port_i;
+  assign pf_port_o = ports_o[1];
+
+  prefetch_unit #(.ArianeCfg(ArianeCfg)) prefetch_u (
+    .cpu_port_i(req_ports_i[1]),
+    .cpu_port_o(req_ports_o[1]),
+    .cache_port_o(pf_port_i),
+    .cache_port_i(pf_port_o)
+    );
+  
 
   // note: last read port is used by the write buffer
   for(genvar k=0; k<NumPorts-1; k++) begin : gen_rd_ports
@@ -174,8 +193,8 @@ module wt_dcache import ariane_pkg::*; import wt_cache_pkg::*; #(
       .rst_ni          ( rst_ni            ),
       .cache_en_i      ( cache_en          ),
       // reqs from core
-      .req_port_i      ( req_ports_i   [k] ),
-      .req_port_o      ( req_ports_o   [k] ),
+      .req_port_i      ( ports_i       [k] ),
+      .req_port_o      ( ports_o       [k] ),
       // miss interface
       .miss_req_o      ( miss_req      [k] ),
       .miss_ack_i      ( miss_ack      [k] ),

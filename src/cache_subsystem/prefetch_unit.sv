@@ -40,7 +40,7 @@ module prefetch_unit import ariane_pkg::*; import wt_cache_pkg::*; #(
 
     output dcache_req_i_t                   cache_port_o,
     input  dcache_req_o_t                   cache_port_i
-)
+);
     dcache_req_i_t  pf_port_o;
     dcache_req_o_t  pf_port_deadend;
     dcache_req_o_t  pf_port_i;
@@ -48,4 +48,15 @@ module prefetch_unit import ariane_pkg::*; import wt_cache_pkg::*; #(
     assign cache_port_o = cpu_has_control ? cpu_port_i : pf_port_o;
     assign cpu_port_o = cpu_has_control ? cache_port_i : pf_port_deadend;
     assign pf_port_i = cpu_has_control ? pf_port_deadend : cache_port_i;
+
+    logic [31:0]history;
+    logic [31:0]last;
+    logic [31:0]predictions[7:0];
+    logic step;
+    assign step = last - history;
+
+    for(genvar k=0; k<8; k++) begin
+        assign predictions[k] = last + (k-1) * step;
+    end
+
 endmodule
