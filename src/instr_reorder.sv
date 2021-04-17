@@ -14,7 +14,9 @@ module instr_reorder (
 	output ariane_pkg::scoreboard_entry_t	issue_entry_o,
 	output logic 				issue_entry_valid_o,
 	output logic 				is_ctrl_flow_o,
-	input logic 				issue_instr_ack_i
+	input logic 				issue_instr_ack_i,
+
+	input logic 				lsu_ready_i
 );
 
 	// delayed instruction
@@ -34,7 +36,7 @@ module instr_reorder (
 			& (issue_entry_i.fu != ariane_pkg::CTRL_FLOW)
 			& (issue_entry_i.fu != ariane_pkg::STORE)
 			& (issue_entry_i.fu != ariane_pkg::LOAD)
-			& (delay_q < 10)
+			& (!lsu_ready_i)
 			& (issue_entry_i.rs1 != issue_q.sbe.rd)
 			& (issue_entry_i.rs2 != issue_q.sbe.rd)
 			& (issue_entry_i.rd != issue_q.sbe.rs1)

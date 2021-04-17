@@ -318,7 +318,9 @@ module ariane import ariane_pkg::*; #(
     .issue_entry_o 		( issue_entry_id_issue 		),
     .issue_entry_valid_o 	( issue_entry_valid_id_issue 	),
     .is_ctrl_flow_o 		( is_ctrl_fow_id_issue 		),
-    .issue_instr_ack_i 		( issue_instr_issue_id 		)
+    .issue_instr_ack_i 		( issue_instr_issue_id 		),
+
+    .lsu_ready_i		( lsu_ready_ex_id 		)
   );
 
   // ---------
