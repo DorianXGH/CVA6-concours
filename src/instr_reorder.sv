@@ -1,0 +1,78 @@
+// Reordering instructions in order to delay consecutive store/load instructions
+
+module instr_reorder (
+	input logic 				clk_i,
+	input logic 				rst_ni,
+	input logic 				flush_i,
+	input logic 				debug_req_i,
+
+	input ariane_pkg::scoreboard_entry_t 	issue_entry_i,
+	input logic 				issue_entry_valid_i,
+	input logic 				is_ctrl_flow_i,
+	output logic 				issue_instr_ack_o,
+
+	output ariane_pkg::scoreboard_entry_t	issue_entry_o,
+	output logic 				issue_entry_valid_o,
+	output logic 				is_ctrl_flow_o,
+	input logic 				issue_instr_ack_i
+);
+
+	// delayed instruction
+	struct packed {
+		ariane_pkg::scoreboard_entry_t 	sbe;
+		logic 				ie_valid;
+		logic 				is_ctrl_flow;
+	} issue_n, issue_q;
+
+	always_comb begin
+		
+		logic swap;
+		swap = 0;
+
+		if (!issue_q.ie_valid) begin
+			issue_entry_o = issue_entry_i;
+			issue_entry_valid_o = issue_entry_valid_i;
+			is_ctrl_flow_o = is_ctrl_flow_i;
+			issue_instr_ack_o = 1;
+
+			if (!issue_instr_ack_i) begin
+				issue_n.sbe = issue_entry_i;
+				issue_n.ie_valid = issue_entry_valid_i;
+				issue_n.is_ctrl_flow = is_ctrl_flow_i;
+			end else begin
+				issue_n = '0;
+			end
+		end else begin
+			issue_instr_ack_o = issue_instr_ack_i;
+			if (swap) begin
+				issue_entry_o = issue_entry_i;
+				issue_entry_valid_o = issue_entry_valid_i;
+				is_ctrl_flow_o = is_ctrl_flow_i;
+
+				issue_n = issue_q;
+			end else begin
+				issue_entry_o = issue_q.sbe;
+				issue_entry_valid_o = issue_q.ie_valid;
+				is_ctrl_flow_o = issue_q.is_ctrl_flow;
+
+				if (issue_instr_ack_i) begin
+					issue_n.sbe = issue_entry_i;
+					issue_n.ie_valid = issue_entry_valid_i;
+					issue_n.is_ctrl_flow = is_ctrl_flow_i;
+				end
+			end
+		end
+		
+		if (flush_i)
+			issue_n = '0;
+	end
+
+	always_ff @(posedge clk_i or negedge rst_ni) begin
+		if(~rst_ni) begin
+			issue_q <= '0;
+		end else begin
+			issue_q <= issue_n;
+		end
+	end
+
+endmodule

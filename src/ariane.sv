@@ -77,7 +77,15 @@ module ariane import ariane_pkg::*; #(
   logic                     fetch_ready_id_if;
 
   // --------------
-  // ID <-> ISSUE
+  // ID <-> REORDER
+  // --------------
+  scoreboard_entry_t        issue_entry_id_issue_ord;
+  logic                     issue_entry_valid_id_issue_ord;
+  logic                     is_ctrl_fow_id_issue_ord;
+  logic                     issue_instr_issue_id_ord;
+
+  // --------------
+  // REORDER <-> ISSUE
   // --------------
   scoreboard_entry_t        issue_entry_id_issue;
   logic                     issue_entry_valid_id_issue;
@@ -277,10 +285,10 @@ module ariane import ariane_pkg::*; #(
     .fetch_entry_valid_i        ( fetch_valid_if_id          ),
     .fetch_entry_ready_o        ( fetch_ready_id_if          ),
 
-    .issue_entry_o              ( issue_entry_id_issue       ),
-    .issue_entry_valid_o        ( issue_entry_valid_id_issue ),
-    .is_ctrl_flow_o             ( is_ctrl_fow_id_issue       ),
-    .issue_instr_ack_i          ( issue_instr_issue_id       ),
+    .issue_entry_o              ( issue_entry_id_issue_ord   ),
+    .issue_entry_valid_o        ( issue_entry_valid_id_issue_ord ),
+    .is_ctrl_flow_o             ( is_ctrl_fow_id_issue_ord   ),
+    .issue_instr_ack_i          ( issue_instr_issue_id_ord   ),
 
     .priv_lvl_i                 ( priv_lvl                   ),
     .fs_i                       ( fs                         ),
@@ -291,6 +299,26 @@ module ariane import ariane_pkg::*; #(
     .tvm_i                      ( tvm_csr_id                 ),
     .tw_i                       ( tw_csr_id                  ),
     .tsr_i                      ( tsr_csr_id                 )
+  );
+
+  // ---------
+  // reordering buffer
+  // ---------
+  instr_reorder instr_reorder_i (
+    .clk_i,
+    .rst_ni,
+    .flush_i 			( flush_ctrl_if 		),
+    .debug_req_i,
+
+    .issue_entry_i 		( issue_entry_id_issue_ord 	),
+    .issue_entry_valid_i 	( issue_entry_valid_id_issue_ord),
+    .is_ctrl_flow_i 		( is_ctrl_fow_id_issue_ord	),
+    .issue_instr_ack_o 		( issue_instr_issue_id_ord	),
+
+    .issue_entry_o 		( issue_entry_id_issue 		),
+    .issue_entry_valid_o 	( issue_entry_valid_id_issue 	),
+    .is_ctrl_flow_o 		( is_ctrl_fow_id_issue 		),
+    .issue_instr_ack_i 		( issue_instr_issue_id 		)
   );
 
   // ---------
