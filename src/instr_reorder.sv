@@ -24,10 +24,22 @@ module instr_reorder (
 		logic 				is_ctrl_flow;
 	} issue_n, issue_q;
 
+	logic [3:0] delay_n, delay_q;
+
 	always_comb begin
 		
 		logic swap;
-		swap = 0;
+		swap = issue_entry_valid_i
+			& ((issue_q.sbe.fu == ariane_pkg::STORE) | (issue_q.sbe.fu == ariane_pkg::LOAD))
+			& (issue_entry_i.fu != ariane_pkg::CTRL_FLOW)
+			& (issue_entry_i.fu != ariane_pkg::STORE)
+			& (issue_entry_i.fu != ariane_pkg::LOAD)
+			& (delay_q < 10)
+			& (issue_entry_i.rs1 != issue_q.sbe.rd)
+			& (issue_entry_i.rs2 != issue_q.sbe.rd)
+			& (issue_entry_i.rd != issue_q.sbe.rs1)
+			& (issue_entry_i.rd != issue_q.sbe.rs2)
+			& (issue_entry_i.rd != issue_q.sbe.rd);
 
 		if (!issue_q.ie_valid) begin
 			issue_entry_o = issue_entry_i;
@@ -35,6 +47,7 @@ module instr_reorder (
 			is_ctrl_flow_o = is_ctrl_flow_i;
 			issue_instr_ack_o = 1;
 
+			delay_n = '0;
 			if (!issue_instr_ack_i) begin
 				issue_n.sbe = issue_entry_i;
 				issue_n.ie_valid = issue_entry_valid_i;
@@ -50,6 +63,7 @@ module instr_reorder (
 				is_ctrl_flow_o = is_ctrl_flow_i;
 
 				issue_n = issue_q;
+				delay_n = delay_q + 1;
 			end else begin
 				issue_entry_o = issue_q.sbe;
 				issue_entry_valid_o = issue_q.ie_valid;
@@ -59,6 +73,10 @@ module instr_reorder (
 					issue_n.sbe = issue_entry_i;
 					issue_n.ie_valid = issue_entry_valid_i;
 					issue_n.is_ctrl_flow = is_ctrl_flow_i;
+					delay_n = '0;
+				end else begin
+					issue_n = issue_q;
+					delay_n = delay_q;
 				end
 			end
 		end
@@ -70,8 +88,10 @@ module instr_reorder (
 	always_ff @(posedge clk_i or negedge rst_ni) begin
 		if(~rst_ni) begin
 			issue_q <= '0;
+			delay_q <= '0;
 		end else begin
 			issue_q <= issue_n;
+			delay_q <= delay_n;
 		end
 	end
 
