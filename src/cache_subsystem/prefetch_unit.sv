@@ -39,7 +39,8 @@ module prefetch_unit import ariane_pkg::*; import wt_cache_pkg::*; #(
     output dcache_req_o_t                   cpu_port_o,
 
     output dcache_req_i_t                   cache_port_o,
-    input  dcache_req_o_t                   cache_port_i
+    input  dcache_req_o_t                   cache_port_i,
+    input logic                             clk
 );
     dcache_req_i_t  pf_port_o;
     dcache_req_o_t  pf_port_deadend;
@@ -49,14 +50,26 @@ module prefetch_unit import ariane_pkg::*; import wt_cache_pkg::*; #(
     assign cpu_port_o = cpu_has_control ? cache_port_i : pf_port_deadend;
     assign pf_port_i = cpu_has_control ? pf_port_deadend : cache_port_i;
 
-    logic [31:0]history;
-    logic [31:0]last;
-    logic [31:0]predictions[7:0];
-    logic step;
+    logic [DCACHE_INDEX_WIDTH-1:0]history;
+    logic [DCACHE_INDEX_WIDTH-1:0]last;
+    logic [DCACHE_INDEX_WIDTH-1:0]predictions[8:0];
+    logic [DCACHE_INDEX_WIDTH-1:0]step;
+    logic [DCACHE_TAG_WIDTH-1:0]curtag;
     assign step = last - history;
+    assign predictions[0] = last;
 
-    for(genvar k=0; k<8; k++) begin
-        assign predictions[k] = last + (k-1) * step;
+    for(genvar k=1; k<9; k++) begin
+        assign predictions[k] = predictions[k-1] + step;
+    end
+
+    always_ff @(posedge clk) begin
+        if(cpu_port_i.data_req) begin
+            last <= cpu_port_i.address_index;
+            history <= last;
+        end
+        if(cpu_port_i.tag_valid) begin
+            curtag <= cpu_port_i.address_tag;
+        end
     end
 
 endmodule

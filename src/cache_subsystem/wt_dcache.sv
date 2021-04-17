@@ -176,7 +176,8 @@ module wt_dcache import ariane_pkg::*; import wt_cache_pkg::*; #(
     .cpu_port_i(req_ports_i[1]),
     .cpu_port_o(req_ports_o[1]),
     .cache_port_o(pf_port_i),
-    .cache_port_i(pf_port_o)
+    .cache_port_i(pf_port_o),
+    .clk(clk_i)
     );
   
 
