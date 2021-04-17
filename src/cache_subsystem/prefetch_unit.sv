@@ -40,7 +40,8 @@ module prefetch_unit import ariane_pkg::*; import wt_cache_pkg::*; #(
 
     output dcache_req_i_t                   cache_port_o,
     input  dcache_req_o_t                   cache_port_i,
-    input logic                             clk
+    input logic                             clk,
+    input logic                             rst_ni
 );
     dcache_req_i_t  pf_port_o;
     dcache_req_o_t  pf_port_deadend;
@@ -55,6 +56,17 @@ module prefetch_unit import ariane_pkg::*; import wt_cache_pkg::*; #(
     logic [DCACHE_INDEX_WIDTH-1:0]predictions[8:0];
     logic [DCACHE_INDEX_WIDTH-1:0]step;
     logic [DCACHE_TAG_WIDTH-1:0]curtag;
+    logic [3:0] confidence;
+    logic [31:0] unused;
+    logic [31:0] unused_thres = 32'h000000FF;
+    logic in_req;
+
+    assign pf_port_deadend.data_gnt = 0;
+    assign pf_port_deadend.data_rvalid = 0;
+    assign pf_port_deadend.data_rdata = 0;
+
+    logic [15:0] test_cnt;
+
     assign step = last - history;
     assign predictions[0] = last;
 
@@ -62,14 +74,47 @@ module prefetch_unit import ariane_pkg::*; import wt_cache_pkg::*; #(
         assign predictions[k] = predictions[k-1] + step;
     end
 
-    always_ff @(posedge clk) begin
+    always_ff @(posedge clk or negedge rst_ni) if (!rst_ni) begin
+        confidence <= '0;
+        history <= '0;
+        last <= '0;
+        unused <= '0;
+        in_req <= 0;
+
+        test_cnt <= '0;
+    end else begin
         if(cpu_port_i.data_req) begin
             last <= cpu_port_i.address_index;
             history <= last;
+            unused <= '0;
+            in_req <= 1;
+            if(cpu_port_i.address_index == predictions[1]) begin
+                confidence <= (confidence != 4'b1111) ? confidence + 1 : confidence;
+            end else begin
+                confidence <= 4'b0;
+            end
+        end else begin
+            if(cache_port_i.data_rvalid) begin
+                in_req <= 0;
+            end
+            unused <= (unused != 32'hFFFFFFFF) ? unused + 1 : unused;
         end
+
         if(cpu_port_i.tag_valid) begin
             curtag <= cpu_port_i.address_tag;
         end
+
+        if(cpu_has_control && (unused > unused_thres) && !(in_req || cpu_port_i.tag_valid || cpu_port_i.data_req || cache_port_i.data_gnt || cache_port_i.data_rvalid )) begin
+            cpu_has_control <= 0;
+            test_cnt <= '0;
+        end else if (!cpu_has_control) begin
+            if(test_cnt > 16'h0008) begin
+                cpu_has_control <= 1;
+            end else begin
+                test_cnt <= test_cnt+1;
+            end
+        end
+
     end
 
 endmodule
