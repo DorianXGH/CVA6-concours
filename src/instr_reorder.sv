@@ -42,6 +42,7 @@ module instr_reorder (
 			& (issue_entry_i.rd != issue_q.sbe.rd);
 
 		swap = 0;
+		issue_n = '0;
 
 		if (!issue_q.ie_valid) begin
 			issue_entry_o = issue_entry_i;
