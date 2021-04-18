@@ -88,7 +88,7 @@ module instr_reorder (
 
 		if (flush_i) begin
 			issue_n = '0;
-			pipeline_n = 0;
+			pipeline_on_n = 0;
 		end
 	end
 
