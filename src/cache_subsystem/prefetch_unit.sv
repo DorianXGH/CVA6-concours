@@ -60,7 +60,7 @@ module prefetch_unit import ariane_pkg::*; import wt_cache_pkg::*; #(
     logic [DCACHE_TAG_WIDTH-1:0]curtag;
     logic [3:0] confidence;
     logic [31:0] unused;
-    logic [31:0] unused_thres = 32'h000000FF;
+    logic [31:0] unused_thres = 32'h0000000F;
     logic in_req;
 
     assign pf_port_deadend.data_gnt = 0;
@@ -124,7 +124,7 @@ module prefetch_unit import ariane_pkg::*; import wt_cache_pkg::*; #(
                 pf_port_o.data_req = 0;
                 pf_port_o.tag_valid = 1;
                 next_state = IDLE;
-                if((cur_pred_index != confidence+1) && (cur_pred_index != 4'b1000)) begin
+                if((cur_pred_index < 4'b1000)) begin
                     pf_port_o.data_req = 1;
                     next_pred_index = cur_pred_index;
                     if(pf_port_i.data_gnt) begin
@@ -153,7 +153,7 @@ module prefetch_unit import ariane_pkg::*; import wt_cache_pkg::*; #(
         p_state <= next_state;
         cur_pred_index <= next_pred_index;
          
-        if(cpu_port_i.data_req) begin
+        if(cpu_port_i.data_req && cpu_port_i.address_index != last) begin
             last <= cpu_port_i.address_index;
             history <= last;
             unused <= '0;
@@ -174,10 +174,10 @@ module prefetch_unit import ariane_pkg::*; import wt_cache_pkg::*; #(
             curtag <= cpu_port_i.address_tag;
         end
 
-        if(cpu_has_control && (unused > unused_thres) && !(in_req || cpu_port_i.tag_valid || cpu_port_i.data_req || cache_port_i.data_gnt || cache_port_i.data_rvalid )) begin
+        if(cpu_has_control && (confidence > 4'b0010) &&(unused > unused_thres) && !(in_req || cpu_port_i.tag_valid || cpu_port_i.data_req || cache_port_i.data_gnt || cache_port_i.data_rvalid )) begin
             cpu_has_control <= 0;
         end else if (!cpu_has_control) begin
-            if ((cur_pred_index == confidence) || (cur_pred_index == 4'b1000)) begin
+            if ((cur_pred_index == 4'b1000)) begin
                 cpu_has_control <= 1;
             end
         end
