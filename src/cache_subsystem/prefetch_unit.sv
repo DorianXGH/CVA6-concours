@@ -86,14 +86,22 @@ module prefetch_unit import ariane_pkg::*; import wt_cache_pkg::*; #(
     always_comb begin
         pf_port_o.address_index = predictions[cur_pred_index];
         pf_port_o.address_tag = curtag;
+        pf_port_o.data_wdata = '0;
+        pf_port_o.data_we = 0;
+        pf_port_o.data_be = 8'hFF;
+        pf_port_o.data_size = 2'b11;
+        pf_port_o.kill_req = 0;
         cacheable = is_inside_cacheable_regions(ArianeCfg,{curtag,pf_port_o.address_index});
         case (p_state)
             IDLE: begin
                 next_state = (cpu_has_control || !cacheable) ? IDLE : SEND_REQ;
                 next_pred_index = cacheable ? 4'b1 : 4'b1000;
+                pf_port_o.data_req = 0;
+                pf_port_o.tag_valid = 0;
             end
             SEND_REQ: begin
                 pf_port_o.data_req = 1;
+                pf_port_o.tag_valid = 0;
                 next_pred_index = cur_pred_index;
                 if(pf_port_i.data_gnt) begin
                     next_state = SEND_TAG;
@@ -104,6 +112,7 @@ module prefetch_unit import ariane_pkg::*; import wt_cache_pkg::*; #(
             end
             WAIT_GNT: begin
                 pf_port_o.data_req = 1;
+                pf_port_o.tag_valid = 0;
                 if(pf_port_i.data_gnt) begin
                     next_state = SEND_TAG;
                     next_pred_index = cur_pred_index + 1;
