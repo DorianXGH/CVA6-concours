@@ -41,6 +41,8 @@ module instr_reorder (
 			& (issue_entry_i.rd != issue_q.sbe.rs2)
 			& (issue_entry_i.rd != issue_q.sbe.rd);
 
+		issue_n = issue_q;
+
 		if (!issue_q.ie_valid) begin
 			issue_entry_o = issue_entry_i;
 			issue_entry_valid_o = issue_entry_valid_i;
@@ -51,8 +53,6 @@ module instr_reorder (
 				issue_n.sbe = issue_entry_i;
 				issue_n.ie_valid = issue_entry_valid_i;
 				issue_n.is_ctrl_flow = is_ctrl_flow_i;
-			end else begin
-				issue_n = '0;
 			end
 		end else begin
 			issue_instr_ack_o = issue_instr_ack_i;
@@ -62,7 +62,6 @@ module instr_reorder (
 				issue_entry_valid_o = issue_entry_valid_i;
 				is_ctrl_flow_o = is_ctrl_flow_i;
 
-				issue_n = issue_q;
 			end else begin
 				issue_entry_o = issue_q.sbe;
 				issue_entry_valid_o = issue_q.ie_valid;
@@ -72,8 +71,6 @@ module instr_reorder (
 					issue_n.sbe = issue_entry_i;
 					issue_n.ie_valid = issue_entry_valid_i;
 					issue_n.is_ctrl_flow = is_ctrl_flow_i;
-				end else begin
-					issue_n = issue_q;
 				end
 			end
 		end
