@@ -91,7 +91,7 @@ module instr_reorder (
 	always_ff @(posedge clk_i or negedge rst_ni) begin
 		if(~rst_ni) begin
 			issue_q <= '0;
-			counter_n <= '0;
+			counter_q <= '0;
 		end else begin
 			issue_q <= issue_n;
 			counter_q <= counter_n;
