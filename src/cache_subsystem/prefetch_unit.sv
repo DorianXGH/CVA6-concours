@@ -51,6 +51,8 @@ module prefetch_unit import ariane_pkg::*; import wt_cache_pkg::*; #(
     assign cpu_port_o = cpu_has_control ? cache_port_i : pf_port_deadend;
     assign pf_port_i = cpu_has_control ? pf_port_deadend : cache_port_i;
 
+    typedef enum logic [1:0] {IDLE,SEND_REQ,WAIT_GNT,SEND_TAG} pref_state;
+
     logic [DCACHE_INDEX_WIDTH-1:0]history;
     logic [DCACHE_INDEX_WIDTH-1:0]last;
     logic [DCACHE_INDEX_WIDTH-1:0]predictions[8:0];
@@ -70,8 +72,61 @@ module prefetch_unit import ariane_pkg::*; import wt_cache_pkg::*; #(
     assign step = last - history;
     assign predictions[0] = last;
 
+    pref_state p_state;
+    pref_state next_state;
+
+    logic [3:0] cur_pred_index;
+    logic [3:0] next_pred_index;
+    logic cacheable;
+
     for(genvar k=1; k<9; k++) begin
         assign predictions[k] = predictions[k-1] + step;
+    end
+
+    always_comb begin
+        pf_port_o.address_index = predictions[cur_pred_index];
+        pf_port_o.address_tag = curtag;
+        cacheable = is_inside_cacheable_regions(ArianeCfg,{curtag,pf_port_o.address_index});
+        case (p_state)
+            IDLE: begin
+                next_state = (cpu_has_control || !cacheable) ? IDLE : SEND_REQ;
+                next_pred_index = cacheable ? 4'b1 : 4'b1000;
+            end
+            SEND_REQ: begin
+                pf_port_o.data_req = 1;
+                next_pred_index = cur_pred_index;
+                if(pf_port_i.data_gnt) begin
+                    next_state = SEND_TAG;
+                    next_pred_index = cur_pred_index + 1;
+                end else begin
+                    next_state = WAIT_GNT;
+                end
+            end
+            WAIT_GNT: begin
+                pf_port_o.data_req = 1;
+                if(pf_port_i.data_gnt) begin
+                    next_state = SEND_TAG;
+                    next_pred_index = cur_pred_index + 1;
+                end else begin
+                    next_state = WAIT_GNT;
+                end
+            end
+            SEND_TAG: begin
+                pf_port_o.data_req = 0;
+                pf_port_o.tag_valid = 1;
+                next_state = IDLE;
+                if(cur_pred_index != 4'b1000) begin
+                    pf_port_o.data_req = 1;
+                    next_pred_index = cur_pred_index;
+                    if(pf_port_i.data_gnt) begin
+                        next_state = SEND_TAG;
+                        next_pred_index = cur_pred_index + 1;
+                    end else begin
+                        next_state = WAIT_GNT;
+                    end
+                end
+            end
+        endcase
     end
 
     always_ff @(posedge clk or negedge rst_ni) if (!rst_ni) begin
@@ -80,9 +135,15 @@ module prefetch_unit import ariane_pkg::*; import wt_cache_pkg::*; #(
         last <= '0;
         unused <= '0;
         in_req <= 0;
-
+        p_state <= IDLE;
         test_cnt <= '0;
+        cur_pred_index <= 4'b1;
+        p_state <= IDLE;
+        curtag <= '0;
     end else begin
+        p_state <= next_state;
+        cur_pred_index <= next_pred_index;
+         
         if(cpu_port_i.data_req) begin
             last <= cpu_port_i.address_index;
             history <= last;
@@ -106,12 +167,9 @@ module prefetch_unit import ariane_pkg::*; import wt_cache_pkg::*; #(
 
         if(cpu_has_control && (unused > unused_thres) && !(in_req || cpu_port_i.tag_valid || cpu_port_i.data_req || cache_port_i.data_gnt || cache_port_i.data_rvalid )) begin
             cpu_has_control <= 0;
-            test_cnt <= '0;
         end else if (!cpu_has_control) begin
-            if(test_cnt > 16'h0008) begin
+            if (cur_pred_index == 4'b1000) begin
                 cpu_has_control <= 1;
-            end else begin
-                test_cnt <= test_cnt+1;
             end
         end
 
