@@ -28,6 +28,10 @@ module instr_reorder (
 
 	logic has_flushed_n, has_flushed_q;
 
+	wire buffer_empty;
+	
+	assign buffer_empty = !issue_q.ie_valid;
+
 	always_comb begin
 
 		issue_n = issue_q;
@@ -36,34 +40,47 @@ module instr_reorder (
 		if (issue_entry_valid_i)
 			has_flushed_n = 0;
 
-		if (!issue_q.ie_valid) begin
+		// TODO: same behaviour as ctrl_flow if csr?		
+
+		if (buffer_empty) begin
+			// intermediary buffer is empty -> pass input data
 			issue_entry_o = issue_entry_i;
 			issue_entry_valid_o = issue_entry_valid_i;
 			is_ctrl_flow_o = is_ctrl_flow_i;
+
 			issue_instr_ack_o = 1;
 
+			// if we can't pass data to the scoreboard, store it in the buffer
 			if (!issue_instr_ack_i) begin
-				issue_n.sbe = issue_entry_i;
-				issue_n.ie_valid = issue_entry_valid_i;
-				issue_n.is_ctrl_flow = is_ctrl_flow_i;
+				if (!is_ctrl_flow_i) begin
+					issue_n.sbe = issue_entry_i;
+					issue_n.ie_valid = issue_entry_valid_i;
+					issue_n.is_ctrl_flow = is_ctrl_flow_i;
+				end else
+					issue_instr_ack_o = 0;
 			end
 		end else begin
-			issue_instr_ack_o = issue_instr_ack_i;
+			// if we attempt to push a branch instruction, we do not want to fill the middle buffer
+			// and make too many instruction fetches
+			issue_instr_ack_o = issue_instr_ack_i & !is_ctrl_flow_i;
 
 			issue_entry_o = issue_q.sbe;
 			issue_entry_valid_o = issue_q.ie_valid;
 			is_ctrl_flow_o = issue_q.is_ctrl_flow;
 
 			if (issue_instr_ack_i) begin
-				issue_n.sbe = issue_entry_i;
-				issue_n.ie_valid = issue_entry_valid_i;
-				issue_n.is_ctrl_flow = is_ctrl_flow_i;
+				if (!is_ctrl_flow_i) begin
+					issue_n.sbe = issue_entry_i;
+					issue_n.ie_valid = issue_entry_valid_i;
+					issue_n.is_ctrl_flow = is_ctrl_flow_i;
+				end else
+					issue_n = '0;
 			end
 		end
 
-		if (has_flushed_n & has_flushed_q) begin
-			issue_instr_ack_o = 0;
-		end
+		//if (has_flushed_n & has_flushed_q) begin
+		//	issue_instr_ack_o = 0;
+		//end
 		
 /*
 		issue_entry_o = issue_entry_i;
