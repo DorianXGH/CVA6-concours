@@ -26,6 +26,8 @@ module instr_reorder (
 		logic 				is_ctrl_flow;
 	} issue_n, issue_q;
 
+	logic pipeline_on_q, pipeline_on_n;
+
 	always_comb begin
 
 		logic swap;
@@ -42,18 +44,19 @@ module instr_reorder (
 			& (issue_entry_i.rd != issue_q.sbe.rd);
 
 		swap = 0;
-		issue_n = '0;
+		pipeline_on_n = pipeline_on_q;
 
-		if (!issue_q.ie_valid) begin
+		if (!pipeline_on_q) begin
 			issue_entry_o = issue_entry_i;
 			issue_entry_valid_o = issue_entry_valid_i;
 			is_ctrl_flow_o = is_ctrl_flow_i;
-			issue_instr_ack_o = issue_instr_ack_i;
-/*
+			issue_instr_ack_o = 1;
+
 			if (!issue_instr_ack_i) begin
 				issue_n.sbe = issue_entry_i;
 				issue_n.ie_valid = issue_entry_valid_i;
 				issue_n.is_ctrl_flow = is_ctrl_flow_i;
+				pipeline_on_n = 1;
 			end else begin
 				issue_n = '0;
 			end
@@ -78,18 +81,24 @@ module instr_reorder (
 				end else begin
 					issue_n = issue_q;
 				end
-			end */
+			end
 		end
 		
-		if (flush_i)
+		
+
+		if (flush_i) begin
 			issue_n = '0;
+			pipeline_n = 0;
+		end
 	end
 
 	always_ff @(posedge clk_i or negedge rst_ni) begin
 		if(~rst_ni) begin
 			issue_q <= '0;
+			pipeline_on_q <= '0;
 		end else begin
 			issue_q <= issue_n;
+			pipeline_on_q <= pipeline_on_n;
 		end
 	end
 
