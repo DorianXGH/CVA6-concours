@@ -58,14 +58,14 @@ module instr_reorder (
 			end
 		end else begin
 			issue_instr_ack_o = issue_instr_ack_i;
-
+/*
 			if (swap) begin
 				issue_entry_o = issue_entry_i;
 				issue_entry_valid_o = issue_entry_valid_i;
 				is_ctrl_flow_o = is_ctrl_flow_i;
 
 				issue_n = issue_q;
-			end else begin
+			end else begin*/
 				issue_entry_o = issue_q.sbe;
 				issue_entry_valid_o = issue_q.ie_valid;
 				is_ctrl_flow_o = issue_q.is_ctrl_flow;
@@ -77,7 +77,7 @@ module instr_reorder (
 				end else begin
 					issue_n = issue_q;
 				end
-			end
+//			end
 		end
 		
 		if (flush_i)
