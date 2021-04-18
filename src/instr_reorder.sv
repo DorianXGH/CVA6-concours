@@ -26,8 +26,6 @@ module instr_reorder (
 		logic 				is_ctrl_flow;
 	} issue_n, issue_q;
 
-	logic [7:0] counter_n, counter_q;
-
 	always_comb begin
 
 		logic swap;
@@ -43,7 +41,7 @@ module instr_reorder (
 			& (issue_entry_i.rd != issue_q.sbe.rs2)
 			& (issue_entry_i.rd != issue_q.sbe.rd);
 
-		counter_n = counter_q;
+		swap = 0;
 
 		if (!issue_q.ie_valid) begin
 			issue_entry_o = issue_entry_i;
@@ -60,10 +58,8 @@ module instr_reorder (
 			end
 		end else begin
 			issue_instr_ack_o = issue_instr_ack_i;
-			if (swap)
-				counter_n = counter_q+1;
 
-			if (swap & !counter_q) begin
+			if (swap) begin
 				issue_entry_o = issue_entry_i;
 				issue_entry_valid_o = issue_entry_valid_i;
 				is_ctrl_flow_o = is_ctrl_flow_i;
@@ -91,10 +87,8 @@ module instr_reorder (
 	always_ff @(posedge clk_i or negedge rst_ni) begin
 		if(~rst_ni) begin
 			issue_q <= '0;
-			counter_q <= '0;
 		end else begin
 			issue_q <= issue_n;
-			counter_q <= counter_n;
 		end
 	end
 
