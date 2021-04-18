@@ -26,7 +26,7 @@ module instr_reorder (
 		logic 				is_ctrl_flow;
 	} issue_n, issue_q;
 
-	logic [1:0] counter_n, counter_q;
+	logic [7:0] counter_n, counter_q;
 
 	always_comb begin
 
