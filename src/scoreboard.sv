@@ -71,7 +71,7 @@ module scoreboard #(
     ariane_pkg::scoreboard_entry_t sbe;            // this is the score board entry we will send to ex
   } mem_q [NR_ENTRIES-1:0], mem_n [NR_ENTRIES-1:0];
 
-  logic                    insert_full, insert_en;
+  logic                    insert_full, insert_en, issue_en, insert_issue_synced;
   logic [BITS_ENTRIES-1:0] issue_cnt_n,      issue_cnt_q;
   logic [BITS_ENTRIES-1:0] issue_pointer_n,  issue_pointer_q;
   logic [BITS_ENTRIES-1:0] insert_cnt_n,     insert_cnt_q;
@@ -93,15 +93,17 @@ module scoreboard #(
     end
   end
 
+  assign insert_issue_synced = (insert_cnt_q == issue_cnt_q);
+
   // an instruction is ready for issue if we have place in the issue FIFO and it the decoder says it is valid
   always_comb begin
-    issue_instr_o          = (insert_cnt_q == issue_cnt_q) ? decoded_instr_i : mem_q[issue_pointer_q].sbe;
+    issue_instr_o          = insert_issue_synced ? decoded_instr_i : mem_q[issue_pointer_q].sbe;
     // make sure we assign the correct trans ID
     issue_instr_o.trans_id = insert_pointer_q;
     // we are ready if we are not full and don't have any unresolved branches, but it can be
     // the case that we have an unresolved branch which is cleared in that cycle (resolved_branch_i == 1)
     issue_instr_valid_o    = decoded_instr_valid_i & ~unresolved_branch_i & ~insert_full;
-    decoded_instr_ack_o    = issue_ack_i & ~insert_full;
+    decoded_instr_ack_o    = ~insert_full & (~insert_issue_synced | issue_ack_i);
   end
 
   // maintain a FIFO with issued instructions
@@ -111,16 +113,25 @@ module scoreboard #(
     mem_n          = mem_q;
     insert_en       = 1'b0;
 
+    issue_en = issue_ack_i & (~insert_issue_synced | ~insert_full);
+
     // if we got a acknowledge from the issue stage, put this scoreboard entry in the queue
     if (decoded_instr_valid_i && decoded_instr_ack_o && !flush_unissued_instr_i) begin
       // the decoded instruction we put in there is valid (1st bit)
       // increase the issue counter and advance issue pointer
       insert_en = 1'b1;
-      mem_n[insert_pointer_q] = {1'b1,                                      // valid bit
+      mem_n[insert_pointer_q] = {1'b0,                                      // valid bit
                                 ariane_pkg::is_rd_fpr(decoded_instr_i.op), // whether rd goes to the fpr
                                 decoded_instr_i                            // decoded instruction record
                                 };
+
+      issue_en = issue_ack_i & (~insert_issue_synced | ~insert_full);
+    end else begin
+      if (insert_issue_synced)
+        issue_en = 1'b0;
     end
+
+    mem_n[issue_pointer_q].issued = issue_en;
 
     // ------------
     // FU NONE
@@ -187,8 +198,8 @@ module scoreboard #(
   assign commit_pointer_n[0] = (flush_i) ? '0 : commit_pointer_q[0] + num_commit;
   assign insert_cnt_n         = (flush_i) ? '0 : insert_cnt_q         - num_commit + insert_en;
   assign insert_pointer_n     = (flush_i) ? '0 : insert_pointer_q     + insert_en;
-  assign issue_cnt_n         = (flush_i) ? '0 : issue_cnt_q         - num_commit + insert_en;
-  assign issue_pointer_n     = (flush_i) ? '0 : issue_pointer_q     + insert_en;
+  assign issue_cnt_n         = (flush_i) ? '0 : issue_cnt_q         - num_commit + issue_en;
+  assign issue_pointer_n     = (flush_i) ? '0 : issue_pointer_q     + issue_en;
 
   // precompute offsets for commit slots
   for (genvar k=1; k < NR_COMMIT_PORTS; k++) begin : gen_cnt_incr
