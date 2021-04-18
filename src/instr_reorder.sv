@@ -35,11 +35,11 @@ module instr_reorder (
 			& (issue_entry_i.fu != ariane_pkg::STORE)
 			& (issue_entry_i.fu != ariane_pkg::LOAD)
 			& (!lsu_ready_i)
-			& (issue_entry_i.rs1 != issue_q.sbe.rd)
-			& (issue_entry_i.rs2 != issue_q.sbe.rd)
+			& ((issue_entry_i.rs1 != issue_q.sbe.rd)|(issue_q.sbe.fu == ariane_pkg::STORE))
+			& ((issue_entry_i.rs2 != issue_q.sbe.rd)|(issue_q.sbe.fu == ariane_pkg::STORE))
 			& (issue_entry_i.rd != issue_q.sbe.rs1)
-			& (issue_entry_i.rd != issue_q.sbe.rs2)
-			& (issue_entry_i.rd != issue_q.sbe.rd);
+			& ((issue_entry_i.rd != issue_q.sbe.rs2)|(issue_q.sbe.fu == ariane_pkg::LOAD))
+			& ((issue_entry_i.rd != issue_q.sbe.rd)|(issue_q.sbe.fu == ariane_pkg::STORE));
 
 		issue_n = issue_q;
 
