@@ -51,7 +51,7 @@ module prefetch_unit import ariane_pkg::*; import wt_cache_pkg::*; #(
     assign cpu_port_o = cpu_has_control ? cache_port_i : pf_port_deadend;
     assign pf_port_i = cpu_has_control ? pf_port_deadend : cache_port_i;
 
-    typedef enum logic [1:0] {IDLE,SEND_REQ,WAIT_GNT,SEND_TAG} pref_state;
+    typedef enum logic [2:0] {IDLE,SEND_REQ,WAIT_GNT,SEND_TAG,WAIT_RVAL} pref_state;
 
     logic [DCACHE_INDEX_WIDTH-1:0]history;
     logic [DCACHE_INDEX_WIDTH-1:0]last;
@@ -123,7 +123,7 @@ module prefetch_unit import ariane_pkg::*; import wt_cache_pkg::*; #(
             SEND_TAG: begin
                 pf_port_o.data_req = 0;
                 pf_port_o.tag_valid = 1;
-                next_state = IDLE;
+                next_state = pf_port_i.data_rvalid ? IDLE : WAIT_RVAL;
                 if((cur_pred_index < 4'b1000)) begin
                     pf_port_o.data_req = 1;
                     next_pred_index = cur_pred_index;
@@ -133,6 +133,13 @@ module prefetch_unit import ariane_pkg::*; import wt_cache_pkg::*; #(
                     end else begin
                         next_state = WAIT_GNT;
                     end
+                end
+            end
+            WAIT_RVAL: begin
+                pf_port_o.data_req = 0;
+                pf_port_o.tag_valid = 1;
+                if(pf_port_i.data_rvalid) begin
+                    next_state = IDLE;
                 end
             end
         endcase
@@ -177,7 +184,7 @@ module prefetch_unit import ariane_pkg::*; import wt_cache_pkg::*; #(
         if(cpu_has_control && (confidence > 4'b0010) &&(unused > unused_thres) && !(in_req || cpu_port_i.tag_valid || cpu_port_i.data_req || cache_port_i.data_gnt || cache_port_i.data_rvalid )) begin
             cpu_has_control <= 0;
         end else if (!cpu_has_control) begin
-            if ((cur_pred_index == 4'b1000)) begin
+            if ((cur_pred_index == 4'b1000) && (p_state == IDLE)) begin
                 cpu_has_control <= 1;
             end
         end
