@@ -67,8 +67,6 @@ module instr_reorder (
 
 		swap = swap_allowed & (ls_swap | mult_chaining);
 	
-		swap = 0;
-
 		if (buffer_empty) begin
 			// intermediary buffer is empty -> pass input data
 			issue_entry_o = issue_entry_i;
