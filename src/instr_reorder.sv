@@ -66,6 +66,8 @@ module instr_reorder (
 				& is_previous_mult_q;
 
 		swap = swap_allowed & (ls_swap | mult_chaining);
+	
+		swap = 0;
 
 		if (buffer_empty) begin
 			// intermediary buffer is empty -> pass input data
