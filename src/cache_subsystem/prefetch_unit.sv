@@ -125,7 +125,7 @@ module prefetch_unit import ariane_pkg::*; import wt_cache_pkg::*; #(
                 pf_port_o.data_req = 0;
                 pf_port_o.tag_valid = 1;
                 next_state = pf_port_i.data_rvalid ? IDLE : WAIT_RVAL;
-                if((cur_pred_index < 4'b1000) && pf_port_i.data_rvalid) begin
+                if((cur_pred_index < 4'b1000) && pf_port_i.data_rvalid && !(cpu_port_i.data_req)) begin
                     pf_port_o.data_req = 1;
                     next_pred_index = cur_pred_index;
                     if(pf_port_i.data_gnt) begin
@@ -141,7 +141,7 @@ module prefetch_unit import ariane_pkg::*; import wt_cache_pkg::*; #(
                 pf_port_o.tag_valid = 1;
                 if(pf_port_i.data_rvalid) begin
                     next_state = IDLE;
-                    if((cur_pred_index < 4'b1000)) begin
+                    if((cur_pred_index < 4'b1000)&& !(cpu_port_i.data_req)) begin
                         
                         pf_port_o.data_req = 1;
                         next_pred_index = cur_pred_index;
@@ -200,7 +200,7 @@ module prefetch_unit import ariane_pkg::*; import wt_cache_pkg::*; #(
         if(cpu_has_control && (confidence > 4'b0010) &&(unused > unused_thres) && !(in_req || cpu_port_i.tag_valid || cpu_port_i.data_req || cache_port_i.data_gnt || cache_port_i.data_rvalid )) begin
             cpu_has_control <= 0;
         end else if (!cpu_has_control) begin
-            if (((cur_pred_index == 4'b1000) ) && (p_state == IDLE)) begin
+            if (((cur_pred_index == 4'b1000) || (cpu_port_i.data_req)) && (p_state == IDLE)) begin
                 cpu_has_control <= 1;
             end
         end
