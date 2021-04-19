@@ -26,10 +26,7 @@ module instr_reorder (
 		logic 				is_ctrl_flow;
 	} issue_n, issue_q;
 
-	logic has_flushed_n, has_flushed_q;
-
 	wire buffer_empty;
-	
 	assign buffer_empty = !issue_q.ie_valid;
 
 	logic swap;
@@ -40,13 +37,9 @@ module instr_reorder (
 	always_comb begin
 
 		issue_n = issue_q;
-		has_flushed_n = has_flushed_q;
-
-		if (issue_entry_valid_i)
-			has_flushed_n = 0;
 
 		swap = issue_entry_valid_i
-			    & ((issue_q.sbe.fu == ariane_pkg::STORE) | (issue_q.sbe.fu == ariane_pkg::LOAD))
+			    	& ((issue_q.sbe.fu == ariane_pkg::STORE) | (issue_q.sbe.fu == ariane_pkg::LOAD))
 				& (issue_entry_i.fu != ariane_pkg::CTRL_FLOW)
 				& (issue_entry_i.fu != ariane_pkg::STORE)
 				& (issue_entry_i.fu != ariane_pkg::LOAD)
@@ -99,29 +92,16 @@ module instr_reorder (
 			end
 		end
 
-		//if (has_flushed_n & has_flushed_q) begin
-		//	issue_instr_ack_o = 0;
-		//end
-		
-/*
-		issue_entry_o = issue_entry_i;
-		issue_entry_valid_o = issue_entry_valid_i;
-		is_ctrl_flow_o = is_ctrl_flow_i;
-		issue_instr_ack_o = issue_instr_ack_i;
-*/
 		if (flush_i) begin
 			issue_n = '0;
-			has_flushed_n = '1;
 		end
 	end
 
 	always_ff @(posedge clk_i or negedge rst_ni) begin
 		if(~rst_ni) begin
 			issue_q <= '0;
-			has_flushed_q <= '0;
 		end else begin
 			issue_q <= issue_n;
-			has_flushed_q <= has_flushed_n;
 		end
 	end
 
