@@ -66,7 +66,8 @@ module scoreboard #(
 
   // this is the FIFO struct of the issue queue
   struct packed {
-    logic                          issued;         // this bit indicates whether we issued this instruction e.g.: if it is valid
+    logic                          valid;          // this bit indicates whether we inserted this instruction
+    logic                          issued;         // this bit indicates whether we issued this instruction
     logic                          is_rd_fpr_flag; // redundant meta info, added for speed
     ariane_pkg::scoreboard_entry_t sbe;            // this is the score board entry we will send to ex
   } mem_q [NR_ENTRIES-1:0], mem_n [NR_ENTRIES-1:0];
@@ -120,7 +121,8 @@ module scoreboard #(
       // the decoded instruction we put in there is valid (1st bit)
       // increase the issue counter and advance issue pointer
       insert_en = 1'b1;
-      mem_n[insert_pointer_q] = {1'b0,                                      // valid bit
+      mem_n[insert_pointer_q] = {1'b1,                                     // valid bit
+                                 1'b0,                                     // issued bit
                                 ariane_pkg::is_rd_fpr(decoded_instr_i.op), // whether rd goes to the fpr
                                 decoded_instr_i                            // decoded instruction record
                                 };
@@ -138,7 +140,7 @@ module scoreboard #(
     // ------------
     for (int unsigned i = 0; i < NR_ENTRIES; i++) begin
       // The FU is NONE -> this instruction is valid immediately
-      if (mem_q[i].sbe.fu == ariane_pkg::NONE && mem_q[i].issued)
+      if (mem_q[i].sbe.fu == ariane_pkg::NONE && mem_q[i].valid)
         mem_n[i].sbe.valid = 1'b1;
     end
 
@@ -169,6 +171,7 @@ module scoreboard #(
     for (logic [BITS_ENTRIES-1:0] i = 0; i < NR_COMMIT_PORTS; i++) begin
       if (commit_ack_i[i]) begin
         // this instruction is no longer in issue e.g.: it is considered finished
+        mem_n[commit_pointer_q[i]].valid      = 1'b0;
         mem_n[commit_pointer_q[i]].issued     = 1'b0;
         mem_n[commit_pointer_q[i]].sbe.valid  = 1'b0;
       end
@@ -180,6 +183,7 @@ module scoreboard #(
     if (flush_i) begin
       for (int unsigned i = 0; i < NR_ENTRIES; i++) begin
         // set all valid flags for all entries to zero
+        mem_n[i].valid        = 1'b0;
         mem_n[i].issued       = 1'b0;
         mem_n[i].sbe.valid    = 1'b0;
         mem_n[i].sbe.ex.valid = 1'b0;
