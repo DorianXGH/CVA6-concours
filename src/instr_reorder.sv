@@ -34,6 +34,9 @@ module instr_reorder (
 
 	logic swap;
 
+	wire skip_buffer;
+	assign skip_buffer = is_ctrl_flow_i | issue_entry_i.fu == ariane_pkg::CSR;
+
 	always_comb begin
 
 		issue_n = issue_q;
@@ -64,7 +67,7 @@ module instr_reorder (
 
 			// if we can't pass data to the scoreboard, store it in the buffer
 			if (!issue_instr_ack_i) begin
-				if (!is_ctrl_flow_i) begin
+				if (!skip_buffer) begin
 					issue_n.sbe = issue_entry_i;
 					issue_n.ie_valid = issue_entry_valid_i;
 					issue_n.is_ctrl_flow = is_ctrl_flow_i;
@@ -74,7 +77,7 @@ module instr_reorder (
 		end else begin
 			// if we attempt to push a branch instruction, we do not want to fill the middle buffer
 			// and make too many instruction fetches
-			issue_instr_ack_o = issue_instr_ack_i & !is_ctrl_flow_i;
+			issue_instr_ack_o = issue_instr_ack_i & !skip_buffer;
 
 			if (swap) begin
 				issue_entry_o = issue_entry_i;
@@ -86,7 +89,7 @@ module instr_reorder (
 				is_ctrl_flow_o = issue_q.is_ctrl_flow;
 
 				if (issue_instr_ack_i) begin
-					if (!is_ctrl_flow_i) begin
+					if (!skip_buffer) begin
 						issue_n.sbe = issue_entry_i;
 						issue_n.ie_valid = issue_entry_valid_i;
 						issue_n.is_ctrl_flow = is_ctrl_flow_i;
