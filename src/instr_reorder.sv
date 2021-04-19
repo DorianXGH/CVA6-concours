@@ -26,9 +26,14 @@ module instr_reorder (
 		logic 				is_ctrl_flow;
 	} issue_n, issue_q;
 
+	logic is_previous_mult_n, is_previous_mult_q;
+
 	wire buffer_empty;
 	assign buffer_empty = !issue_q.ie_valid;
 
+	logic swap_allowed;
+	logic ls_swap;
+	logic mult_chaining;
 	logic swap;
 
 	wire skip_buffer;
@@ -37,18 +42,30 @@ module instr_reorder (
 	always_comb begin
 
 		issue_n = issue_q;
-
-		swap = issue_entry_valid_i
-			    	& ((issue_q.sbe.fu == ariane_pkg::STORE) | (issue_q.sbe.fu == ariane_pkg::LOAD))
+		is_previous_mult_n = (issue_entry_o.fu == ariane_pkg::MULT);
+		
+		// check if a swap is allowed (valid, no branch, dependencies respected)
+		swap_allowed = issue_entry_valid_i
 				& (issue_entry_i.fu != ariane_pkg::CTRL_FLOW)
-				& (issue_entry_i.fu != ariane_pkg::STORE)
-				& (issue_entry_i.fu != ariane_pkg::LOAD)
-				& (!lsu_ready_i)
+				& (issue_q.sbe.fu != ariane_pkg::CTRL_FLOW)
 				& ((issue_entry_i.rs1 != issue_q.sbe.rd)|(issue_q.sbe.fu == ariane_pkg::STORE))
 				& ((issue_entry_i.rs2 != issue_q.sbe.rd)|(issue_q.sbe.fu == ariane_pkg::STORE))
 				& (issue_entry_i.rd != issue_q.sbe.rs1)
 				& ((issue_entry_i.rd != issue_q.sbe.rs2)|(issue_q.sbe.fu == ariane_pkg::LOAD))
 				& ((issue_entry_i.rd != issue_q.sbe.rd)|(issue_q.sbe.fu == ariane_pkg::STORE));
+
+		// check if delaying a load/store is usefull
+		ls_swap = ((issue_q.sbe.fu == ariane_pkg::STORE) | (issue_q.sbe.fu == ariane_pkg::LOAD))
+				& (issue_entry_i.fu != ariane_pkg::STORE)
+				& (issue_entry_i.fu != ariane_pkg::LOAD)
+				& (!lsu_ready_i);
+
+		// check if chaining mult instructions is possible
+		mult_chaining = (issue_entry_i.fu == ariane_pkg::MULT)
+				& (issue_q.sbe.fu != ariane_pkg::MULT)
+				& is_previous_mult_q;
+
+		swap = swap_allowed & (ls_swap | mult_chaining);
 
 		if (buffer_empty) begin
 			// intermediary buffer is empty -> pass input data
@@ -100,8 +117,10 @@ module instr_reorder (
 	always_ff @(posedge clk_i or negedge rst_ni) begin
 		if(~rst_ni) begin
 			issue_q <= '0;
+			is_previous_mult_q <= 0;
 		end else begin
 			issue_q <= issue_n;
+			is_previous_mult_q <= is_previous_mult_n;
 		end
 	end
 
