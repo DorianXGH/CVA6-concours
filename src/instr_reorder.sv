@@ -32,6 +32,8 @@ module instr_reorder (
 	
 	assign buffer_empty = !issue_q.ie_valid;
 
+	logic swap;
+
 	always_comb begin
 
 		issue_n = issue_q;
@@ -40,7 +42,17 @@ module instr_reorder (
 		if (issue_entry_valid_i)
 			has_flushed_n = 0;
 
-		// TODO: same behaviour as ctrl_flow if csr?		
+		swap = issue_entry_valid_i
+			    & ((issue_q.sbe.fu == ariane_pkg::STORE) | (issue_q.sbe.fu == ariane_pkg::LOAD))
+				& (issue_entry_i.fu != ariane_pkg::CTRL_FLOW)
+				& (issue_entry_i.fu != ariane_pkg::STORE)
+				& (issue_entry_i.fu != ariane_pkg::LOAD)
+				& (!lsu_ready_i)
+				& ((issue_entry_i.rs1 != issue_q.sbe.rd)|(issue_q.sbe.fu == ariane_pkg::STORE))
+				& ((issue_entry_i.rs2 != issue_q.sbe.rd)|(issue_q.sbe.fu == ariane_pkg::STORE))
+				& (issue_entry_i.rd != issue_q.sbe.rs1)
+				& ((issue_entry_i.rd != issue_q.sbe.rs2)|(issue_q.sbe.fu == ariane_pkg::LOAD))
+				& ((issue_entry_i.rd != issue_q.sbe.rd)|(issue_q.sbe.fu == ariane_pkg::STORE));
 
 		if (buffer_empty) begin
 			// intermediary buffer is empty -> pass input data
@@ -64,17 +76,23 @@ module instr_reorder (
 			// and make too many instruction fetches
 			issue_instr_ack_o = issue_instr_ack_i & !is_ctrl_flow_i;
 
-			issue_entry_o = issue_q.sbe;
-			issue_entry_valid_o = issue_q.ie_valid;
-			is_ctrl_flow_o = issue_q.is_ctrl_flow;
+			if (swap) begin
+				issue_entry_o = issue_entry_i;
+				issue_entry_valid_o = issue_entry_valid_i;
+				is_ctrl_flow_o = is_ctrl_flow_i;
+			end else begin
+				issue_entry_o = issue_q.sbe;
+				issue_entry_valid_o = issue_q.ie_valid;
+				is_ctrl_flow_o = issue_q.is_ctrl_flow;
 
-			if (issue_instr_ack_i) begin
-				if (!is_ctrl_flow_i) begin
-					issue_n.sbe = issue_entry_i;
-					issue_n.ie_valid = issue_entry_valid_i;
-					issue_n.is_ctrl_flow = is_ctrl_flow_i;
-				end else
-					issue_n = '0;
+				if (issue_instr_ack_i) begin
+					if (!is_ctrl_flow_i) begin
+						issue_n.sbe = issue_entry_i;
+						issue_n.ie_valid = issue_entry_valid_i;
+						issue_n.is_ctrl_flow = is_ctrl_flow_i;
+					end else
+						issue_n = '0;
+				end
 			end
 		end
 
