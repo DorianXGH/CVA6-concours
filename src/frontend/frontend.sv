@@ -331,7 +331,7 @@ module frontend import ariane_pkg::*; #(
       // if cache has no request, request unpredicted address
       icache_dreq_o.req = 1;
       if (!instr_queue_ready) begin
-	icache_dreq_o.vaddr = unpredict_address_q;
+	fetch_address = unpredict_address_q;
       end
       
     end
@@ -353,8 +353,8 @@ module frontend import ariane_pkg::*; #(
       end else begin
         npc_rst_load_q    <= 1'b0;
         npc_q             <= npc_d;
-        icache_valid_q    <= icache_dreq_i.valid;
-        if (icache_dreq_i.valid) begin
+        icache_valid_q    <= icache_dreq_i.valid & instr_queue_ready;
+        if (icache_dreq_i.valid & instr_queue_ready) begin
           icache_data_q        <= icache_data;
           icache_vaddr_q       <= icache_dreq_i.vaddr;
           // Map the only three exceptions which can occur in the frontend to a two bit enum
