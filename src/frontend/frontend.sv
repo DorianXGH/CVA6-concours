@@ -285,7 +285,8 @@ module frontend import ariane_pkg::*; #(
     // Mis-predict handling is a little bit different
     // select PC a.k.a PC Gen
     always_comb begin : npc_select
-      automatic logic [riscv::VLEN-1:0] fetch_address;
+      // automatic logic [riscv::VLEN-1:0] fetch_address;
+      logic [riscv::VLEN-1:0] fetch_address;
       // check whether we come out of reset
       // this is a workaround. some tools have issues
       // having boot_addr_i in the asynchronous
