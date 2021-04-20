@@ -350,10 +350,12 @@ module frontend import ariane_pkg::*; #(
         icache_ex_valid_q <= ariane_pkg::FE_NONE;
         btb_q             <= '0;
         bht_q             <= '0;
+	unpredict_address_q <= '0;
       end else begin
         npc_rst_load_q    <= 1'b0;
         npc_q             <= npc_d;
         icache_valid_q    <= icache_dreq_i.valid & instr_queue_ready;
+	unpredict_address_q <= unpredict_address_n;
         if (icache_dreq_i.valid & instr_queue_ready) begin
           icache_data_q        <= icache_data;
           icache_vaddr_q       <= icache_dreq_i.vaddr;
