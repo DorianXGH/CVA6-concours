@@ -143,6 +143,7 @@ module frontend import ariane_pkg::*; #(
 
     // reminding last unpredicted address in order to send cache request when cache unused
     logic [riscv::VLEN-1:0] unpredict_address_q, unpredict_address_n;
+    logic [riscv::VLEN-1:0] fetch_address;
 
     for (genvar i = 0; i < INSTR_PER_FETCH; i++) begin
       // branch history table -> BHT
@@ -286,7 +287,6 @@ module frontend import ariane_pkg::*; #(
     // select PC a.k.a PC Gen
     always_comb begin : npc_select
       // automatic logic [riscv::VLEN-1:0] fetch_address;
-      logic [riscv::VLEN-1:0] fetch_address;
       // check whether we come out of reset
       // this is a workaround. some tools have issues
       // having boot_addr_i in the asynchronous
