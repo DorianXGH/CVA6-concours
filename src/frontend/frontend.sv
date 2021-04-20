@@ -141,6 +141,9 @@ module frontend import ariane_pkg::*; #(
     logic [INSTR_PER_FETCH-1:0] is_return;
     logic [INSTR_PER_FETCH-1:0] is_jalr;
 
+    // reminding last unpredicted address in order to send cache request when cache unused
+    logic [riscv::VLEN-1:0] unpredict_address_q, unpredict_address_n;
+
     for (genvar i = 0; i < INSTR_PER_FETCH; i++) begin
       // branch history table -> BHT
       assign is_branch[i] =  instruction_valid[i] & (rvi_branch[i] | rvc_branch[i]);
@@ -159,6 +162,7 @@ module frontend import ariane_pkg::*; #(
       taken_rvi_cf = '0;
       taken_rvc_cf = '0;
       predict_address = '0;
+      unpredict_address_n = unpredict_address_q;
 
       for (int i = 0; i < INSTR_PER_FETCH; i++)  cf_type[i] = ariane_pkg::NoCF;
 
@@ -220,9 +224,14 @@ module frontend import ariane_pkg::*; #(
             ras_push = instr_queue_consumed[i];
             ras_update = addr[i] + (rvc_call[i] ? 2 : 4);
           end
+	  // calculate the default unpredicted address for branch
+	  if (is_branch[i]) begin
+	    unpredict_address_n = addr[i] + (rvc_branch[i] ? rvc_imm[i] : rvi_imm[i]);
+	  end
           // calculate the jump target address
           if (taken_rvc_cf[i] || taken_rvi_cf[i]) begin
             predict_address = addr[i] + (taken_rvc_cf[i] ? rvc_imm[i] : rvi_imm[i]);
+	    unpredict_address_n = addr[i] + (taken_rvc_cf[i] ? 2 : 4);
           end
       end
     end
@@ -237,7 +246,7 @@ module frontend import ariane_pkg::*; #(
     assign is_mispredict = resolved_branch_i.valid & resolved_branch_i.is_mispredict;
 
     // Cache interface
-    assign icache_dreq_o.req = instr_queue_ready;
+    //assign icache_dreq_o.req = instr_queue_ready;
     assign if_ready = icache_dreq_i.ready & instr_queue_ready;
     // We need to flush the cache pipeline if:
     // 1. We mispredicted
@@ -318,6 +327,13 @@ module frontend import ariane_pkg::*; #(
       // enter debug on a hard-coded base-address
       if (set_debug_pc_i) npc_d = ArianeCfg.DmBaseAddress[riscv::VLEN-1:0] + dm::HaltAddress[riscv::VLEN-1:0];
       icache_dreq_o.vaddr = fetch_address;
+
+      // if cache has no request, request unpredicted address
+      icache_dreq_o.req = 1;
+      if (!instr_queue_ready) begin
+	icache_dreq_o.vaddr = unpredict_address_q;
+      end
+      
     end
 
     logic [FETCH_WIDTH-1:0] icache_data;
