@@ -36,8 +36,9 @@ module issue_read_operands import ariane_pkg::*; #(
     input  logic [FLEN-1:0]                        rs3_i,
     input  logic                                   rs3_valid_i,
     // get clobber input
-    input  fu_t [2**REG_ADDR_SIZE-1:0]             rd_clobber_gpr_i,
-    input  fu_t [2**REG_ADDR_SIZE-1:0]             rd_clobber_fpr_i,
+    input logic [2**REG_ADDR_SIZE-1:0]             rd_clobber_gpr_i,
+    input logic [2**REG_ADDR_SIZE-1:0]             rd_clobber_fpr_i,
+    input logic [2**REG_ADDR_SIZE-1:0]             rd_clobber_gpr_csr_i,
     // To FU, just single issue for now
     output fu_data_t                               fu_data_o,
     output logic [riscv::VLEN-1:0]                 rs1_forwarding_o,  // unregistered version of fu_data_o.operanda
@@ -161,29 +162,29 @@ module issue_read_operands import ariane_pkg::*; #(
         //    as this is an immediate we do not have to wait on anything here
         // 1. check if the source registers are clobbered --> check appropriate clobber list (gpr/fpr)
         // 2. poll the scoreboard
-        if (!issue_instr_i.use_zimm && (is_rs1_fpr(issue_instr_i.op) ? rd_clobber_fpr_i[issue_instr_i.rs1] != NONE
-                                                                     : rd_clobber_gpr_i[issue_instr_i.rs1] != NONE)) begin
+        if (!issue_instr_i.use_zimm && (is_rs1_fpr(issue_instr_i.op) ? rd_clobber_fpr_i[issue_instr_i.rs1]
+                                                                     : rd_clobber_gpr_i[issue_instr_i.rs1])) begin
             // check if the clobbering instruction is not a CSR instruction, CSR instructions can only
             // be fetched through the register file since they can't be forwarded
             // if the operand is available, forward it. CSRs don't write to/from FPR
-            if (rs1_valid_i && (is_rs1_fpr(issue_instr_i.op) ? 1'b1 : ((rd_clobber_gpr_i[issue_instr_i.rs1] != CSR) || (issue_instr_i.op == SFENCE_VMA)))) begin
+            if (rs1_valid_i && (is_rs1_fpr(issue_instr_i.op) ? 1'b1 : ((!rd_clobber_gpr_csr_i[issue_instr_i.rs1]) || (issue_instr_i.op == SFENCE_VMA)))) begin
                 forward_rs1 = 1'b1;
             end else begin // the operand is not available -> stall
                 stall = 1'b1;
             end
         end
 
-        if (is_rs2_fpr(issue_instr_i.op) ? rd_clobber_fpr_i[issue_instr_i.rs2] != NONE
-                                         : rd_clobber_gpr_i[issue_instr_i.rs2] != NONE) begin
+        if (is_rs2_fpr(issue_instr_i.op) ? rd_clobber_fpr_i[issue_instr_i.rs2]
+                                            : rd_clobber_gpr_i[issue_instr_i.rs2]) begin
             // if the operand is available, forward it. CSRs don't write to/from FPR
-            if (rs2_valid_i && (is_rs2_fpr(issue_instr_i.op) ? 1'b1 : ( (rd_clobber_gpr_i[issue_instr_i.rs2] != CSR) || (issue_instr_i.op == SFENCE_VMA))))  begin
+            if (rs2_valid_i && (is_rs2_fpr(issue_instr_i.op) ? 1'b1 : ( (!rd_clobber_gpr_csr_i[issue_instr_i.rs2]) || (issue_instr_i.op == SFENCE_VMA))))  begin
                 forward_rs2 = 1'b1;
             end else begin // the operand is not available -> stall
                 stall = 1'b1;
             end
         end
 
-        if (is_imm_fpr(issue_instr_i.op) && rd_clobber_fpr_i[issue_instr_i.result[REG_ADDR_SIZE-1:0]] != NONE) begin
+        if (is_imm_fpr(issue_instr_i.op) && rd_clobber_fpr_i[issue_instr_i.result[REG_ADDR_SIZE-1:0]]) begin
             // if the operand is available, forward it. CSRs don't write to/from FPR so no need to check
             if (rs3_valid_i) begin
                 forward_rs3 = 1'b1;
@@ -311,8 +312,8 @@ module issue_read_operands import ariane_pkg::*; #(
                 // WAW - Write After Write Dependency Check
                 // -----------------------------------------
                 // no other instruction has the same destination register -> issue the instruction
-                if (is_rd_fpr(issue_instr_i.op) ? (rd_clobber_fpr_i[issue_instr_i.rd] == NONE)
-                                                : (rd_clobber_gpr_i[issue_instr_i.rd] == NONE)) begin
+                if (is_rd_fpr(issue_instr_i.op) ? (!rd_clobber_fpr_i[issue_instr_i.rd])
+                                                : (!rd_clobber_gpr_i[issue_instr_i.rd])) begin
                     issue_ack_o = 1'b1;
                 end
                 // or check that the target destination register will be written in this cycle by the

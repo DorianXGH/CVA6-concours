@@ -24,8 +24,9 @@ module scoreboard #(
   input  logic                                                  flush_i,  // flush whole scoreboard
   input  logic                                                  unresolved_branch_i, // we have an unresolved branch
   // list of clobbered registers to issue stage
-  output ariane_pkg::fu_t [2**ariane_pkg::REG_ADDR_SIZE-1:0]    rd_clobber_gpr_o,
-  output ariane_pkg::fu_t [2**ariane_pkg::REG_ADDR_SIZE-1:0]    rd_clobber_fpr_o,
+  output logic [2**ariane_pkg::REG_ADDR_SIZE-1:0]               rd_clobber_gpr_o,
+  output logic [2**ariane_pkg::REG_ADDR_SIZE-1:0]               rd_clobber_gpr_csr_o,
+  output logic [2**ariane_pkg::REG_ADDR_SIZE-1:0]               rd_clobber_fpr_o,
 
   // regfile like interface to operand read stage
   input  logic [ariane_pkg::REG_ADDR_SIZE-1:0]                  rs1_i,
@@ -215,70 +216,32 @@ module scoreboard #(
   // -------------------
   // rd_clobber output: output currently clobbered destination registers
   logic [2**ariane_pkg::REG_ADDR_SIZE-1:0][NR_ENTRIES:0]              gpr_clobber_vld;
+  logic [2**ariane_pkg::REG_ADDR_SIZE-1:0][NR_ENTRIES:0]              gpr_csr_clobber_vld;
   logic [2**ariane_pkg::REG_ADDR_SIZE-1:0][NR_ENTRIES:0]              fpr_clobber_vld;
-  ariane_pkg::fu_t [NR_ENTRIES:0]                                     clobber_fu;
-
+  
   always_comb begin : clobber_assign
-    gpr_clobber_vld  = '0;
-    fpr_clobber_vld  = '0;
+    gpr_clobber_vld = '0;
+    gpr_csr_clobber_vld = '0;
+    fpr_clobber_vld = '0;
 
-    // default (highest entry hast lowest prio in arbiter tree below)
-    clobber_fu[NR_ENTRIES] = ariane_pkg::NONE;
-    for (int unsigned i = 0; i < 2**ariane_pkg::REG_ADDR_SIZE; i++) begin
-      gpr_clobber_vld[i][NR_ENTRIES] = 1'b1;
-      fpr_clobber_vld[i][NR_ENTRIES] = 1'b1;
-    end
-
-    // check for all valid entries and set the clobber accordingly
     for (int unsigned i = 0; i < NR_ENTRIES; i++) begin
       gpr_clobber_vld[mem_q[i].sbe.rd][i] = mem_q[i].issued & ~mem_q[i].is_rd_fpr_flag;
       fpr_clobber_vld[mem_q[i].sbe.rd][i] = mem_q[i].issued & mem_q[i].is_rd_fpr_flag;
-      clobber_fu[i]                       = mem_q[i].sbe.fu;
+      gpr_csr_clobber_vld[mem_q[i].sbe.rd][i] = mem_q[i].issued & (mem_q[i].sbe.fu == ariane_pkg::CSR);
     end
 
-    // GPR[0] is always free
-    gpr_clobber_vld[0] = '0;
+    rd_clobber_gpr_o[0] = 0;
+    rd_clobber_gpr_csr_o[0] = 0;
+    rd_clobber_fpr_o[0] = 0;
+
+    for (int unsigned i = 1; i < 2**ariane_pkg::REG_ADDR_SIZE; i++) begin
+      rd_clobber_gpr_o[i] = |gpr_clobber_vld[i];
+      rd_clobber_gpr_csr_o[i] = |gpr_csr_clobber_vld[i];
+      rd_clobber_fpr_o[i] = |fpr_clobber_vld[i];
+    end
+    
   end
 
-  for (genvar k = 0; k < 2**ariane_pkg::REG_ADDR_SIZE; k++) begin : gen_sel_clobbers
-    // get fu that is going to clobber this register (there should be only one)
-    rr_arb_tree #(
-      .NumIn(NR_ENTRIES+1),
-      .DataType(ariane_pkg::fu_t),
-      .ExtPrio(1'b1),
-      .AxiVldRdy(1'b1)
-    ) i_sel_gpr_clobbers (
-      .clk_i   ( clk_i               ),
-      .rst_ni  ( rst_ni              ),
-      .flush_i ( 1'b0                ),
-      .rr_i    ( '0                  ),
-      .req_i   ( gpr_clobber_vld[k]  ),
-      .gnt_o   (                     ),
-      .data_i  ( clobber_fu          ),
-      .gnt_i   ( 1'b1                ),
-      .req_o   (                     ),
-      .data_o  ( rd_clobber_gpr_o[k] ),
-      .idx_o   (                     )
-    );
-    rr_arb_tree #(
-      .NumIn(NR_ENTRIES+1),
-      .DataType(ariane_pkg::fu_t),
-      .ExtPrio(1'b1),
-      .AxiVldRdy(1'b1)
-    ) i_sel_fpr_clobbers (
-      .clk_i   ( clk_i               ),
-      .rst_ni  ( rst_ni              ),
-      .flush_i ( 1'b0                ),
-      .rr_i    ( '0                  ),
-      .req_i   ( fpr_clobber_vld[k]  ),
-      .gnt_o   (                     ),
-      .data_i  ( clobber_fu          ),
-      .gnt_i   ( 1'b1                ),
-      .req_o   (                     ),
-      .data_o  ( rd_clobber_fpr_o[k] ),
-      .idx_o   (                     )
-    );
-  end
 
   // ----------------------------------
   // Read Operands (a.k.a forwarding)
@@ -396,7 +359,7 @@ module scoreboard #(
 
   // assert that zero is never set
   assert property (
-    @(posedge clk_i) disable iff (!rst_ni) (rd_clobber_gpr_o[0] == ariane_pkg::NONE))
+    @(posedge clk_i) disable iff (!rst_ni) (!rd_clobber_gpr_o[0]))
     else $fatal (1,"RD 0 should not bet set");
   // assert that we never acknowledge a commit if the instruction is not valid
   assert property (

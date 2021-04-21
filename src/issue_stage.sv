@@ -75,8 +75,9 @@ module issue_stage import ariane_pkg::*; #(
     // ---------------------------------------------------
     // Scoreboard (SB) <-> Issue and Read Operands (IRO)
     // ---------------------------------------------------
-    fu_t  [2**REG_ADDR_SIZE-1:0] rd_clobber_gpr_sb_iro;
-    fu_t  [2**REG_ADDR_SIZE-1:0] rd_clobber_fpr_sb_iro;
+    logic [2**REG_ADDR_SIZE-1:0] rd_clobber_gpr_sb_iro;
+    logic [2**REG_ADDR_SIZE-1:0] rd_clobber_fpr_sb_iro;
+    logic [2**REG_ADDR_SIZE-1:0] rd_clobber_gpr_csr_sb_iro;
 
     logic [REG_ADDR_SIZE-1:0]  rs1_iro_sb;
     riscv::xlen_t              rs1_sb_iro;
@@ -126,6 +127,7 @@ module issue_stage import ariane_pkg::*; #(
         .unresolved_branch_i   ( 1'b0                                      ),
         .rd_clobber_gpr_o      ( rd_clobber_gpr_sb_iro                     ),
         .rd_clobber_fpr_o      ( rd_clobber_fpr_sb_iro                     ),
+        .rd_clobber_gpr_csr_o  ( rd_clobber_gpr_csr_sb_iro                 ),
         .rs1_i                 ( rs1_iro_sb                                ),
         .rs1_o                 ( rs1_sb_iro                                ),
         .rs1_valid_o           ( rs1_valid_sb_iro                          ),
@@ -173,6 +175,7 @@ module issue_stage import ariane_pkg::*; #(
         .rs3_valid_i         ( rs3_valid_iro_sb                ),
         .rd_clobber_gpr_i    ( rd_clobber_gpr_sb_iro           ),
         .rd_clobber_fpr_i    ( rd_clobber_fpr_sb_iro           ),
+        .rd_clobber_gpr_csr_i( rd_clobber_gpr_csr_sb_iro       ),
         .alu_valid_o         ( alu_valid_o                     ),
         .branch_valid_o      ( branch_valid_o                  ),
         .csr_valid_o         ( csr_valid_o                     ),
