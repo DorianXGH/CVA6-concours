@@ -327,13 +327,10 @@ module frontend import ariane_pkg::*; #(
       // 7. Debug
       // enter debug on a hard-coded base-address
       if (set_debug_pc_i) npc_d = ArianeCfg.DmBaseAddress[riscv::VLEN-1:0] + dm::HaltAddress[riscv::VLEN-1:0];
-      icache_dreq_o.vaddr = fetch_address;
+      icache_dreq_o.vaddr = !instr_queue_ready ? unpredict_address_q : fetch_address;
 
       // if cache has no request, request unpredicted address
       icache_dreq_o.req = 1;
-      if (!instr_queue_ready) begin
-	fetch_address = unpredict_address_q;
-      end
       
     end
 
