@@ -257,7 +257,7 @@ module frontend import ariane_pkg::*; #(
     assign icache_dreq_o.kill_s1 = is_mispredict | flush_i | replay;
     // if we have a valid branch-prediction we need to only kill the last cache request
     // also if we killed the first stage we also need to kill the second stage (inclusive flush)
-    assign icache_dreq_o.kill_s2 = icache_dreq_o.kill_s1 | bp_valid;
+    assign icache_dreq_o.kill_s2 = icache_dreq_o.kill_s1 | bp_valid | (instr_queue_ready & ~instr_queue_ready_q);
 
     // Update Control Flow Predictions
     bht_update_t bht_update;
