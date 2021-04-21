@@ -143,6 +143,7 @@ module frontend import ariane_pkg::*; #(
 
     // reminding last unpredicted address in order to send cache request when cache unused
     logic [riscv::VLEN-1:0] unpredict_address_q, unpredict_address_n;
+    logic instr_queue_ready_q;
     logic [riscv::VLEN-1:0] fetch_address;
 
     for (genvar i = 0; i < INSTR_PER_FETCH; i++) begin
@@ -349,12 +350,14 @@ module frontend import ariane_pkg::*; #(
         btb_q             <= '0;
         bht_q             <= '0;
 	unpredict_address_q <= '0;
+	instr_queue_ready_q <= 0;
       end else begin
         npc_rst_load_q    <= 1'b0;
         npc_q             <= npc_d;
-        icache_valid_q    <= icache_dreq_i.valid;
+        icache_valid_q    <= icache_dreq_i.valid & instr_queue_ready_q;
 	unpredict_address_q <= unpredict_address_n;
-        if (icache_dreq_i.valid) begin
+	instr_queue_ready_q <= instr_queue_ready;
+        if (icache_dreq_i.valid & instr_queue_ready_q) begin
           icache_data_q        <= icache_data;
           icache_vaddr_q       <= icache_dreq_i.vaddr;
           // Map the only three exceptions which can occur in the frontend to a two bit enum
