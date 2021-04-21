@@ -247,7 +247,7 @@ module frontend import ariane_pkg::*; #(
     assign is_mispredict = resolved_branch_i.valid & resolved_branch_i.is_mispredict;
 
     // Cache interface
-    //assign icache_dreq_o.req = instr_queue_ready;
+    assign icache_dreq_o.req = instr_queue_ready;
     assign if_ready = icache_dreq_i.ready & instr_queue_ready;
     // We need to flush the cache pipeline if:
     // 1. We mispredicted
@@ -330,7 +330,7 @@ module frontend import ariane_pkg::*; #(
       icache_dreq_o.vaddr = fetch_address;
 
       // if cache has no request, request unpredicted address
-      icache_dreq_o.req = 1;
+      // icache_dreq_o.req = 1;
       if (!instr_queue_ready) begin
 	fetch_address = unpredict_address_q;
       end
