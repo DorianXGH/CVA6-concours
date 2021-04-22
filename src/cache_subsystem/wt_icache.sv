@@ -63,6 +63,7 @@ module wt_icache import ariane_pkg::*; import wt_cache_pkg::*; #(
   logic                                 update_lfsr;                  // shift the LFSR
   logic [$clog2(ICACHE_SET_ASSOC)-1:0]  inv_way;                      // first non-valid encountered
   logic [$clog2(ICACHE_SET_ASSOC)-1:0]  rnd_way;                      // random index for replacement
+  logic [$clog2(ICACHE_SET_ASSOC)-1:0]  lru_way;                      // lru index for replacement
   logic [$clog2(ICACHE_SET_ASSOC)-1:0]  repl_way;                     // way to replace
   logic [ICACHE_SET_ASSOC-1:0]          repl_way_oh_d, repl_way_oh_q; // way to replace (onehot)
   logic                                 all_ways_valid;               // we need to switch repl strategy since all are valid
@@ -86,6 +87,8 @@ module wt_icache import ariane_pkg::*; import wt_cache_pkg::*; #(
   logic [ICACHE_SET_ASSOC-1:0]          vld_wdata;                    // valid bits to write
   logic [ICACHE_SET_ASSOC-1:0]          vld_rdata;                    // valid bits coming from valid regs
   logic [ICACHE_CL_IDX_WIDTH-1:0]       vld_addr;                     // valid bit
+  logic [ICACHE_AGE_WIDTH-1:0]		age_wdata [ICACHE_SET_ASSOC-1:0]; // age bits to write
+  logic [ICACHE_AGE_WIDTH-1:0] 		age_rdata [ICACHE_SET_ASSOC-1:0]; // age bits coming from valid regs
 
   // cpmtroller FSM
   typedef enum logic[2:0] {FLUSH, IDLE, READ, MISS, TLB_MISS, KILL_ATRANS, KILL_MISS} state_e;
@@ -369,12 +372,34 @@ end else begin : gen_piton_offset
   assign vld_wdata = (cache_wren) ? '1 : '0;
 
   assign vld_we    = (cache_wren | inv_en | flush_en);
+
+  for (genvar i=0;i<ICACHE_SET_ASSOC;i++) begin
+	  always_comb begin
+		if (icache_way_bin2oh(mem_rtrn_i.inv.way)) begin
+			age_wdata[i] = 0;
+		end else begin
+			age_wdata[i] = age_rdata[i]+1;
+		end
+
+		if (flush_en) begin
+			age_wdata[i] = i;
+		end
+	  end
+  end
+
   // assign vld_req   = (vld_we | cache_rden);
 
 
-  // chose random replacement if all are valid
+  // chose lru replacement if all are valid
   assign update_lfsr   = cache_wren & all_ways_valid;
-  assign repl_way      = (all_ways_valid) ? rnd_way : inv_way;
+  always_comb begin
+	  for (int i=0;i<ICACHE_SET_ASSOC;i++) begin
+	  	if (age_rdata[i] == ICACHE_SET_ASSOC-1)
+			lru_way = i;
+   	  end
+  end
+  
+  assign repl_way      = (all_ways_valid) ? lru_way : inv_way;
   assign repl_way_oh_d = (cmp_en_q) ? icache_way_bin2oh(repl_way) : repl_way_oh_q;
 
   // enable signals for memory arrays
@@ -433,13 +458,13 @@ end else begin : gen_piton_offset
 ///////////////////////////////////////////////////////
 
 
-  logic [ICACHE_TAG_WIDTH:0] cl_tag_valid_rdata [ICACHE_SET_ASSOC-1:0];
+  logic [ICACHE_TAG_WIDTH+ICACHE_AGE_WIDTH:0] cl_tag_valid_rdata [ICACHE_SET_ASSOC-1:0];
 
   for (genvar i = 0; i < ICACHE_SET_ASSOC; i++) begin : gen_sram
     // Tag RAM
     sram #(
       // tag + valid bit
-      .DATA_WIDTH ( ICACHE_TAG_WIDTH+1 ),
+      .DATA_WIDTH ( ICACHE_TAG_WIDTH+1+ICACHE_AGE_WIDTH ),
       .NUM_WORDS  ( ICACHE_NUM_WORDS   )
     ) tag_sram (
       .clk_i     ( clk_i                    ),
@@ -449,13 +474,14 @@ end else begin : gen_piton_offset
       .addr_i    ( vld_addr                 ),
       // we can always use the saved tag here since it takes a
       // couple of cycle until we write to the cache upon a miss
-      .wdata_i   ( {vld_wdata[i], cl_tag_q} ),
+      .wdata_i   ( {age_wdata[i], vld_wdata[i], cl_tag_q} ),
       .be_i      ( '1                       ),
       .rdata_o   ( cl_tag_valid_rdata[i]    )
     );
 
     assign cl_tag_rdata[i] = cl_tag_valid_rdata[i][ICACHE_TAG_WIDTH-1:0];
     assign vld_rdata[i]    = cl_tag_valid_rdata[i][ICACHE_TAG_WIDTH];
+    assign age_rdata[i]    = cl_tag_valid_rdata[i][ICACHE_TAG_WIDTH+ICACHE_AGE_WIDTH:ICACHE_TAG_WIDTH+1];
 
     // Data RAM
     sram #(
