@@ -141,10 +141,9 @@ module frontend import ariane_pkg::*; #(
     logic [INSTR_PER_FETCH-1:0] is_return;
     logic [INSTR_PER_FETCH-1:0] is_jalr;
 
-    // reminding last unpredicted address in order to send cache request when cache unused
+    // remind last unpredicted address in order to send cache request when cache unused
     logic [riscv::VLEN-1:0] unpredict_address_q, unpredict_address_n;
-    logic instr_queue_ready_q;
-    logic [riscv::VLEN-1:0] fetch_address;
+    logic instr_queue_ready_q; // 1 cycle delay for the instr_queue_ready signal in order to indicate if a cache answer will be valid
 
     for (genvar i = 0; i < INSTR_PER_FETCH; i++) begin
       // branch history table -> BHT
@@ -257,6 +256,7 @@ module frontend import ariane_pkg::*; #(
     assign icache_dreq_o.kill_s1 = is_mispredict | flush_i | replay;
     // if we have a valid branch-prediction we need to only kill the last cache request
     // also if we killed the first stage we also need to kill the second stage (inclusive flush)
+    // also if previous request was a fake request
     assign icache_dreq_o.kill_s2 = icache_dreq_o.kill_s1 | bp_valid | (instr_queue_ready & ~instr_queue_ready_q);
 
     // Update Control Flow Predictions
@@ -287,7 +287,7 @@ module frontend import ariane_pkg::*; #(
     // Mis-predict handling is a little bit different
     // select PC a.k.a PC Gen
     always_comb begin : npc_select
-      // automatic logic [riscv::VLEN-1:0] fetch_address;
+      automatic logic [riscv::VLEN-1:0] fetch_address;
       // check whether we come out of reset
       // this is a workaround. some tools have issues
       // having boot_addr_i in the asynchronous
@@ -328,10 +328,10 @@ module frontend import ariane_pkg::*; #(
       // 7. Debug
       // enter debug on a hard-coded base-address
       if (set_debug_pc_i) npc_d = ArianeCfg.DmBaseAddress[riscv::VLEN-1:0] + dm::HaltAddress[riscv::VLEN-1:0];
-      icache_dreq_o.vaddr = !instr_queue_ready ? unpredict_address_q : fetch_address;
 
-      // if cache has no request, request unpredicted address
+      // if cache has no real request, make fake request to unpredicted address
       icache_dreq_o.req = 1;
+      icache_dreq_o.vaddr = !instr_queue_ready ? unpredict_address_q : fetch_address;
       
     end
 
@@ -354,7 +354,7 @@ module frontend import ariane_pkg::*; #(
       end else begin
         npc_rst_load_q    <= 1'b0;
         npc_q             <= npc_d;
-        icache_valid_q    <= icache_dreq_i.valid & instr_queue_ready_q;
+        icache_valid_q    <= icache_dreq_i.valid & instr_queue_ready_q; // if instr_queue was not ready previous cycle, current cache answer can't be real
 	unpredict_address_q <= unpredict_address_n;
 	instr_queue_ready_q <= instr_queue_ready;
         if (icache_dreq_i.valid & instr_queue_ready_q) begin
