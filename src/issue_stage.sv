@@ -180,7 +180,6 @@ module issue_stage import ariane_pkg::*; #(
     assign fpu_rm_o = (fu_data_o[0].fu == FPU || fu_data_o[0].fu == FPU_VEC) ? fpu_rm[0] : fpu_rm[1];
 
     for (genvar i = 0; i < NR_ISSUE_PORTS; i++) begin : gen_instr_fifo
-
         issue_read_operands #(
         .NR_COMMIT_PORTS ( NR_COMMIT_PORTS )
         )i_issue_read_operands  (

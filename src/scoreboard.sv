@@ -70,12 +70,6 @@ module scoreboard #(
     rd_clobber_gpr_o[1] = '0;
     rd_clobber_gpr_csr_o[1] = '0;
     rd_clobber_fpr_o[1] = '0;
-    rs1_o[1] = '0;
-    rs1_valid_o[1] = '0;
-    rs2_o[1] = '0;
-    rs2_valid_o[1] = '0;
-    rs3_o[1] = '0;
-    rs3_valid_o[1] = '0;
     issue_instr_o[1] = '0;
     issue_instr_valid_o[1] = '0;
   end
@@ -88,13 +82,16 @@ module scoreboard #(
     ariane_pkg::scoreboard_entry_t sbe;            // this is the score board entry we will send to ex
   } mem_q [NR_ENTRIES-1:0], mem_n [NR_ENTRIES-1:0];
 
-  logic                    insert_full, insert_en, issue_en, insert_issue_synced;
+  logic                    insert_full, insert_en, insert_issue_synced;
+  logic [NR_ISSUE_PORTS-1:0] issue_en;
   logic [BITS_ENTRIES-1:0] issue_cnt_n,      issue_cnt_q;
   logic [BITS_ENTRIES-1:0] issue_pointer_n,  issue_pointer_q;
   logic [BITS_ENTRIES-1:0] insert_cnt_n,     insert_cnt_q;
   logic [BITS_ENTRIES-1:0] insert_pointer_n, insert_pointer_q;
   logic [NR_COMMIT_PORTS-1:0][BITS_ENTRIES-1:0] commit_pointer_n, commit_pointer_q;
   logic [$clog2(NR_COMMIT_PORTS):0] num_commit;
+
+  logic [BITS_ENTRIES-1:0] issue_pointer_next;
 
   // the issue queue is full don't issue any new instructions
   // works since aligned to power of 2
@@ -112,11 +109,15 @@ module scoreboard #(
 
   assign insert_issue_synced = (insert_cnt_q == issue_cnt_q);
 
+  assign insert_pointer_next = issue_pointer_q + 1'b1;
+
   // an instruction is ready for issue if we have place in the issue FIFO and it the decoder says it is valid
   always_comb begin
     issue_instr_o[0]          = insert_issue_synced ? decoded_instr_i : mem_q[issue_pointer_q].sbe;
+    //issue_instr_o[1]          = insert_issue_synced ? '0 : mem_q[issue_pointer_next].sbe;
     // make sure we assign the correct trans ID
     issue_instr_o[0].trans_id = insert_pointer_q;
+    //issue_instr_o[1].trans_id = insert_pointer_next;
     // we are ready if we are not full and don't have any unresolved branches, but it can be
     // the case that we have an unresolved branch which is cleared in that cycle (resolved_branch_i == 1)
     issue_instr_valid_o[0]    = decoded_instr_valid_i & ~unresolved_branch_i & ~insert_full;
@@ -135,7 +136,7 @@ module scoreboard #(
     // if we got a acknowledge from the issue stage, put this scoreboard entry in the queue
     if (decoded_instr_valid_i && decoded_instr_ack_o && !flush_unissued_instr_i) begin
       // the decoded instruction we put in there is valid (1st bit)
-      // increase the issue counter and advance issue pointer
+      // increase the issue counter and advatherence issue pointer
       insert_en = 1'b1;
       mem_n[insert_pointer_q] = {1'b1,                                     // valid bit
                                  1'b0,                                     // issued bit
@@ -143,13 +144,13 @@ module scoreboard #(
                                 decoded_instr_i                            // decoded instruction record
                                 };
 
-      issue_en = issue_ack_i[0] & (~insert_issue_synced | ~insert_full);
+      issue_en[0] = issue_ack_i[0] & (~insert_issue_synced | ~insert_full);
     end else begin
       if (insert_issue_synced)
-        issue_en = 1'b0;
+        issue_en[0] = 1'b0;
     end
 
-    mem_n[issue_pointer_q].issued = issue_en;
+    mem_n[issue_pointer_q].issued = issue_en[0];
 
     // ------------
     // FU NONE
@@ -218,8 +219,8 @@ module scoreboard #(
   assign commit_pointer_n[0] = (flush_i) ? '0 : commit_pointer_q[0] + num_commit;
   assign insert_cnt_n         = (flush_i) ? '0 : insert_cnt_q         - num_commit + insert_en;
   assign insert_pointer_n     = (flush_i) ? '0 : insert_pointer_q     + insert_en;
-  assign issue_cnt_n         = (flush_i) ? '0 : issue_cnt_q         - num_commit + issue_en;
-  assign issue_pointer_n     = (flush_i) ? '0 : issue_pointer_q     + issue_en;
+  assign issue_cnt_n         = (flush_i) ? '0 : issue_cnt_q         - num_commit + issue_en[0] + issue_en[1];
+  assign issue_pointer_n     = (flush_i) ? '0 : issue_pointer_q     + issue_en[0];  // TODO
 
   // precompute offsets for commit slots
   for (genvar k=1; k < NR_COMMIT_PORTS; k++) begin : gen_cnt_incr
@@ -261,91 +262,93 @@ module scoreboard #(
   // ----------------------------------
   // Read Operands (a.k.a forwarding)
   // ----------------------------------
-  // read operand interface: same logic as register file
-  logic [NR_ENTRIES+NR_WB_PORTS-1:0] rs1_fwd_req, rs2_fwd_req, rs3_fwd_req;
-  logic [NR_ENTRIES+NR_WB_PORTS-1:0][riscv::XLEN-1:0] rs_data;
-  logic rs1_valid, rs2_valid;
+      // read operand interface: same logic as register file
+  logic [NR_ISSUE_PORTS-1:0][NR_ENTRIES+NR_WB_PORTS-1:0] rs1_fwd_req, rs2_fwd_req, rs3_fwd_req;
+  logic [NR_ISSUE_PORTS-1:0][NR_ENTRIES+NR_WB_PORTS-1:0][riscv::XLEN-1:0] rs_data;
+  logic [NR_ISSUE_PORTS-1:0] rs1_valid, rs2_valid;
+  riscv::xlen_t [NR_ISSUE_PORTS-1:0]           rs3;
 
-  // WB ports have higher prio than entries
-  for (genvar k = 0; unsigned'(k) < NR_WB_PORTS; k++) begin : gen_rs_wb
-    assign rs1_fwd_req[k] = (mem_q[trans_id_i[k]].sbe.rd == rs1_i[0]) & wt_valid_i[k] & (~ex_i[k].valid) & (mem_q[trans_id_i[k]].is_rd_fpr_flag == ariane_pkg::is_rs1_fpr(issue_instr_o[0].op));
-    assign rs2_fwd_req[k] = (mem_q[trans_id_i[k]].sbe.rd == rs2_i[0]) & wt_valid_i[k] & (~ex_i[k].valid) & (mem_q[trans_id_i[k]].is_rd_fpr_flag == ariane_pkg::is_rs2_fpr(issue_instr_o[0].op));
-    assign rs3_fwd_req[k] = (mem_q[trans_id_i[k]].sbe.rd == rs3_i[0]) & wt_valid_i[k] & (~ex_i[k].valid) & (mem_q[trans_id_i[k]].is_rd_fpr_flag == ariane_pkg::is_imm_fpr(issue_instr_o[0].op));
-    assign rs_data[k]     = wbdata_i[k];
+  for (genvar i = 0; i < NR_ISSUE_PORTS; i++) begin
+    // WB ports have higher prio than entries
+    for (genvar k = 0; unsigned'(k) < NR_WB_PORTS; k++) begin : gen_rs_wb
+      assign rs1_fwd_req[i][k] = (mem_q[trans_id_i[k]].sbe.rd == rs1_i[i]) & wt_valid_i[k] & (~ex_i[k].valid) & (mem_q[trans_id_i[k]].is_rd_fpr_flag == ariane_pkg::is_rs1_fpr(issue_instr_o[i].op));
+      assign rs2_fwd_req[i][k] = (mem_q[trans_id_i[k]].sbe.rd == rs2_i[i]) & wt_valid_i[k] & (~ex_i[k].valid) & (mem_q[trans_id_i[k]].is_rd_fpr_flag == ariane_pkg::is_rs2_fpr(issue_instr_o[i].op));
+      assign rs3_fwd_req[i][k] = (mem_q[trans_id_i[k]].sbe.rd == rs3_i[i]) & wt_valid_i[k] & (~ex_i[k].valid) & (mem_q[trans_id_i[k]].is_rd_fpr_flag == ariane_pkg::is_imm_fpr(issue_instr_o[i].op));
+      assign rs_data[i][k]     = wbdata_i[k];
+    end
+    for (genvar k = 0; unsigned'(k) < NR_ENTRIES; k++) begin : gen_rs_entries
+      assign rs1_fwd_req[i][k+NR_WB_PORTS] = (mem_q[k].sbe.rd == rs1_i[i]) & mem_q[k].issued & mem_q[k].sbe.valid & (mem_q[k].is_rd_fpr_flag == ariane_pkg::is_rs1_fpr(issue_instr_o[i].op));
+      assign rs2_fwd_req[i][k+NR_WB_PORTS] = (mem_q[k].sbe.rd == rs2_i[i]) & mem_q[k].issued & mem_q[k].sbe.valid & (mem_q[k].is_rd_fpr_flag == ariane_pkg::is_rs2_fpr(issue_instr_o[i].op));
+      assign rs3_fwd_req[i][k+NR_WB_PORTS] = (mem_q[k].sbe.rd == rs3_i[i]) & mem_q[k].issued & mem_q[k].sbe.valid & (mem_q[k].is_rd_fpr_flag == ariane_pkg::is_imm_fpr(issue_instr_o[i].op));
+      assign rs_data[i][k+NR_WB_PORTS]     = mem_q[k].sbe.result;
+    end
+
+    // check whether we are accessing GPR[0], rs3 is only used with the FPR!
+    assign rs1_valid_o[i] = rs1_valid[i] & ((|rs1_i[i]) | ariane_pkg::is_rs1_fpr(issue_instr_o[i].op));
+    assign rs2_valid_o[i] = rs2_valid[i] & ((|rs2_i[i]) | ariane_pkg::is_rs2_fpr(issue_instr_o[i].op));
+
+    // use fixed prio here
+    // this implicitly gives higher prio to WB ports
+    rr_arb_tree #(
+      .NumIn(NR_ENTRIES+NR_WB_PORTS),
+      .DataWidth(riscv::XLEN),
+      .ExtPrio(1'b1),
+      .AxiVldRdy(1'b1)
+    ) i_sel_rs1 (
+      .clk_i   ( clk_i       ),
+      .rst_ni  ( rst_ni      ),
+      .flush_i ( 1'b0        ),
+      .rr_i    ( '0          ),
+      .req_i   ( rs1_fwd_req[i] ),
+      .gnt_o   (             ),
+      .data_i  ( rs_data[i]     ),
+      .gnt_i   ( 1'b1        ),
+      .req_o   ( rs1_valid[i]   ),
+      .data_o  ( rs1_o[i]     ),
+      .idx_o   (             )
+    );
+
+    rr_arb_tree #(
+      .NumIn(NR_ENTRIES+NR_WB_PORTS),
+      .DataWidth(riscv::XLEN),
+      .ExtPrio(1'b1),
+      .AxiVldRdy(1'b1)
+    ) i_sel_rs2 (
+      .clk_i   ( clk_i       ),
+      .rst_ni  ( rst_ni      ),
+      .flush_i ( 1'b0        ),
+      .rr_i    ( '0          ),
+      .req_i   ( rs2_fwd_req[i] ),
+      .gnt_o   (             ),
+      .data_i  ( rs_data[i]     ),
+      .gnt_i   ( 1'b1        ),
+      .req_o   ( rs2_valid[i]   ),
+      .data_o  ( rs2_o[i]    ),
+      .idx_o   (             )
+    );
+
+
+    rr_arb_tree #(
+      .NumIn(NR_ENTRIES+NR_WB_PORTS),
+      .DataWidth(riscv::XLEN),
+      .ExtPrio(1'b1),
+      .AxiVldRdy(1'b1)
+    ) i_sel_rs3 (
+      .clk_i   ( clk_i       ),
+      .rst_ni  ( rst_ni      ),
+      .flush_i ( 1'b0        ),
+      .rr_i    ( '0          ),
+      .req_i   ( rs3_fwd_req[i] ),
+      .gnt_o   (             ),
+      .data_i  ( rs_data[i]     ),
+      .gnt_i   ( 1'b1        ),
+      .req_o   ( rs3_valid_o[i]),
+      .data_o  ( rs3[i]         ),
+      .idx_o   (             )
+    );
+
+    assign rs3_o[i] = rs3[i][ariane_pkg::FLEN-1:0];
   end
-  for (genvar k = 0; unsigned'(k) < NR_ENTRIES; k++) begin : gen_rs_entries
-    assign rs1_fwd_req[k+NR_WB_PORTS] = (mem_q[k].sbe.rd == rs1_i[0]) & mem_q[k].issued & mem_q[k].sbe.valid & (mem_q[k].is_rd_fpr_flag == ariane_pkg::is_rs1_fpr(issue_instr_o[0].op));
-    assign rs2_fwd_req[k+NR_WB_PORTS] = (mem_q[k].sbe.rd == rs2_i[0]) & mem_q[k].issued & mem_q[k].sbe.valid & (mem_q[k].is_rd_fpr_flag == ariane_pkg::is_rs2_fpr(issue_instr_o[0].op));
-    assign rs3_fwd_req[k+NR_WB_PORTS] = (mem_q[k].sbe.rd == rs3_i[0]) & mem_q[k].issued & mem_q[k].sbe.valid & (mem_q[k].is_rd_fpr_flag == ariane_pkg::is_imm_fpr(issue_instr_o[0].op));
-    assign rs_data[k+NR_WB_PORTS]     = mem_q[k].sbe.result;
-  end
-
-  // check whether we are accessing GPR[0], rs3 is only used with the FPR!
-  assign rs1_valid_o[0] = rs1_valid & ((|rs1_i[0]) | ariane_pkg::is_rs1_fpr(issue_instr_o[0].op));
-  assign rs2_valid_o[0] = rs2_valid & ((|rs2_i[0]) | ariane_pkg::is_rs2_fpr(issue_instr_o[0].op));
-
-  // use fixed prio here
-  // this implicitly gives higher prio to WB ports
-  rr_arb_tree #(
-    .NumIn(NR_ENTRIES+NR_WB_PORTS),
-    .DataWidth(riscv::XLEN),
-    .ExtPrio(1'b1),
-    .AxiVldRdy(1'b1)
-  ) i_sel_rs1 (
-    .clk_i   ( clk_i       ),
-    .rst_ni  ( rst_ni      ),
-    .flush_i ( 1'b0        ),
-    .rr_i    ( '0          ),
-    .req_i   ( rs1_fwd_req ),
-    .gnt_o   (             ),
-    .data_i  ( rs_data     ),
-    .gnt_i   ( 1'b1        ),
-    .req_o   ( rs1_valid   ),
-    .data_o  ( rs1_o[0]     ),
-    .idx_o   (             )
-  );
-
-  rr_arb_tree #(
-    .NumIn(NR_ENTRIES+NR_WB_PORTS),
-    .DataWidth(riscv::XLEN),
-    .ExtPrio(1'b1),
-    .AxiVldRdy(1'b1)
-  ) i_sel_rs2 (
-    .clk_i   ( clk_i       ),
-    .rst_ni  ( rst_ni      ),
-    .flush_i ( 1'b0        ),
-    .rr_i    ( '0          ),
-    .req_i   ( rs2_fwd_req ),
-    .gnt_o   (             ),
-    .data_i  ( rs_data     ),
-    .gnt_i   ( 1'b1        ),
-    .req_o   ( rs2_valid   ),
-    .data_o  ( rs2_o[0]    ),
-    .idx_o   (             )
-  );
-
-  riscv::xlen_t           rs3;
-
-  rr_arb_tree #(
-    .NumIn(NR_ENTRIES+NR_WB_PORTS),
-    .DataWidth(riscv::XLEN),
-    .ExtPrio(1'b1),
-    .AxiVldRdy(1'b1)
-  ) i_sel_rs3 (
-    .clk_i   ( clk_i       ),
-    .rst_ni  ( rst_ni      ),
-    .flush_i ( 1'b0        ),
-    .rr_i    ( '0          ),
-    .req_i   ( rs3_fwd_req ),
-    .gnt_o   (             ),
-    .data_i  ( rs_data     ),
-    .gnt_i   ( 1'b1        ),
-    .req_o   ( rs3_valid_o[0]),
-    .data_o  ( rs3         ),
-    .idx_o   (             )
-  );
-
-  assign rs3_o[0] = rs3[ariane_pkg::FLEN-1:0];
 
   // sequential process
   always_ff @(posedge clk_i or negedge rst_ni) begin : regs
