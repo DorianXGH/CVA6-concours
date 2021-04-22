@@ -89,6 +89,9 @@ module wt_icache import ariane_pkg::*; import wt_cache_pkg::*; #(
   logic [ICACHE_CL_IDX_WIDTH-1:0]       vld_addr;                     // valid bit
   logic [ICACHE_AGE_WIDTH-1:0]		age_wdata [ICACHE_SET_ASSOC-1:0]; // age bits to write
   logic [ICACHE_AGE_WIDTH-1:0] 		age_rdata [ICACHE_SET_ASSOC-1:0]; // age bits coming from valid regs
+  logic [ICACHE_AGE_WIDTH-1:0] 		age_rdata_d [ICACHE_SET_ASSOC-1:0]; // age bits coming from valid regs
+  logic [ICACHE_AGE_WIDTH-1:0] 		age_rdata_q [ICACHE_SET_ASSOC-1:0]; // age bits coming from valid regs
+  logic 		 		age_req;
 
   // cpmtroller FSM
   typedef enum logic[2:0] {FLUSH, IDLE, READ, MISS, TLB_MISS, KILL_ATRANS, KILL_MISS} state_e;
@@ -378,7 +381,7 @@ end else begin : gen_piton_offset
 		if (icache_way_bin2oh(mem_rtrn_i.inv.way)) begin
 			age_wdata[i] = 0;
 		end else begin
-			age_wdata[i] = age_rdata[i]+1;
+			age_wdata[i] = age_rdata_q[i]+1;
 		end
 
 		if (flush_en) begin
@@ -387,6 +390,9 @@ end else begin : gen_piton_offset
 	  end
   end
 
+  assign age_rdata_d = cache_rden ? age_rdata : age_rdata_q;
+  assign age_req = (|cl_req) ? 1 : 0;
+
   // assign vld_req   = (vld_we | cache_rden);
 
 
@@ -394,7 +400,7 @@ end else begin : gen_piton_offset
   assign update_lfsr   = cache_wren & all_ways_valid;
   always_comb begin
 	  for (int i=0;i<ICACHE_SET_ASSOC;i++) begin
-	  	if (age_rdata[i] == ICACHE_SET_ASSOC-1)
+	  	if (age_rdata_q[i] == ICACHE_SET_ASSOC-1)
 			lru_way = i;
    	  end
   end
@@ -458,13 +464,13 @@ end else begin : gen_piton_offset
 ///////////////////////////////////////////////////////
 
 
-  logic [ICACHE_TAG_WIDTH+ICACHE_AGE_WIDTH:0] cl_tag_valid_rdata [ICACHE_SET_ASSOC-1:0];
+  logic [ICACHE_TAG_WIDTH:0] cl_tag_valid_rdata [ICACHE_SET_ASSOC-1:0];
 
   for (genvar i = 0; i < ICACHE_SET_ASSOC; i++) begin : gen_sram
     // Tag RAM
     sram #(
       // tag + valid bit
-      .DATA_WIDTH ( ICACHE_TAG_WIDTH+1+ICACHE_AGE_WIDTH ),
+      .DATA_WIDTH ( ICACHE_TAG_WIDTH+1 ),
       .NUM_WORDS  ( ICACHE_NUM_WORDS   )
     ) tag_sram (
       .clk_i     ( clk_i                    ),
@@ -474,14 +480,13 @@ end else begin : gen_piton_offset
       .addr_i    ( vld_addr                 ),
       // we can always use the saved tag here since it takes a
       // couple of cycle until we write to the cache upon a miss
-      .wdata_i   ( {age_wdata[i], vld_wdata[i], cl_tag_q} ),
+      .wdata_i   ( {vld_wdata[i], cl_tag_q} ),
       .be_i      ( '1                       ),
       .rdata_o   ( cl_tag_valid_rdata[i]    )
     );
 
     assign cl_tag_rdata[i] = cl_tag_valid_rdata[i][ICACHE_TAG_WIDTH-1:0];
     assign vld_rdata[i]    = cl_tag_valid_rdata[i][ICACHE_TAG_WIDTH];
-    assign age_rdata[i]    = cl_tag_valid_rdata[i][ICACHE_TAG_WIDTH+ICACHE_AGE_WIDTH:ICACHE_TAG_WIDTH+1];
 
     // Data RAM
     sram #(
@@ -497,6 +502,21 @@ end else begin : gen_piton_offset
       .be_i      ( '1                  ),
       .rdata_o   ( cl_rdata[i]         )
     );
+
+    sram #(
+      .DATA_WIDTH ( ICACHE_AGE_WIDTH ),
+      .NUM_WORDS  ( ICACHE_NUM_WORDS )
+    ) age_sram (
+      .clk_i      ( clk_i 		),
+      .rst_ni 	  ( rst_ni 		),
+      .req_i 	  ( age_req 		),
+      .we_i 	  ( cl_we 		),
+      .addr_i 	  ( cl_index 		),
+      .wdata_i 	  ( age_wdata[i] 	),
+      .be_i 	  ( '1 			),
+      .rdata_o    ( age_rdata[i] 	)
+    );
+
   end
 
 
@@ -521,6 +541,7 @@ end else begin : gen_piton_offset
       state_q       <= state_d;
       cl_offset_q   <= cl_offset_d;
       repl_way_oh_q <= repl_way_oh_d;
+      age_rdata_q   <= age_rdata_d;
     end
   end
 
