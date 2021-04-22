@@ -378,12 +378,22 @@ end else begin : gen_piton_offset
 
   for (genvar i=0;i<ICACHE_SET_ASSOC;i++) begin
 	  always_comb begin
-		if (icache_way_bin2oh(mem_rtrn_i.inv.way)) begin
-			age_wdata[i] = 0;
-		end else begin
-			age_wdata[i] = age_rdata_q[i]+1;
+	  	if (mem_rtrn_i.inv.vld) begin
+			if (icache_way_bin2oh(mem_rtrn_i.inv.way)[i]) begin
+				age_wdata[i] = 0;
+			end else begin
+				age_wdata[i] = age_rdata_q[i]+1;
+			end
 		end
-
+/*
+		if (|cl_hit) begin
+			if (cl_hit[i]) begin
+				age_wdata[i] = 0;
+			end else begin
+				age_wdata[i] = age_rdata_q[i]+1;
+			end
+		end
+*/
 		if (flush_en) begin
 			age_wdata[i] = i;
 		end
@@ -391,7 +401,7 @@ end else begin : gen_piton_offset
   end
 
   assign age_rdata_d = cache_rden ? age_rdata : age_rdata_q;
-  assign age_req = (|cl_req) ? 1 : 0;
+  assign age_req = (|cl_req/* | |cl_hit*/) ? 1 : 0;
 
   // assign vld_req   = (vld_we | cache_rden);
 
