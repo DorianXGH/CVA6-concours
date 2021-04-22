@@ -24,7 +24,8 @@ import "DPI-C" function void init_dromajo(string cfg_f_name);
 
 
 module ariane import ariane_pkg::*; #(
-  parameter ariane_pkg::ariane_cfg_t ArianeCfg     = ariane_pkg::ArianeDefaultConfig
+  parameter ariane_pkg::ariane_cfg_t ArianeCfg     = ariane_pkg::ArianeDefaultConfig,
+  parameter int unsigned NR_ISSUE_PORTS = 2
 ) (
   input  logic                         clk_i,
   input  logic                         rst_ni,
@@ -89,12 +90,12 @@ module ariane import ariane_pkg::*; #(
   // --------------
 
 
-  logic [riscv::VLEN-1:0] rs1_forwarding_id_ex; // unregistered version of fu_data_o.operanda
-  logic [riscv::VLEN-1:0] rs2_forwarding_id_ex; // unregistered version of fu_data_o.operandb
+  logic [NR_ISSUE_PORTS-1:0][riscv::VLEN-1:0] rs1_forwarding_id_ex; // unregistered version of fu_data_o.operanda
+  logic [NR_ISSUE_PORTS-1:0][riscv::VLEN-1:0] rs2_forwarding_id_ex; // unregistered version of fu_data_o.operandb
 
-  fu_data_t                 fu_data_id_ex;
-  logic [riscv::VLEN-1:0]   pc_id_ex;
-  logic                     is_compressed_instr_id_ex;
+  fu_data_t [NR_ISSUE_PORTS-1:0]                 fu_data_id_ex;
+  logic [NR_ISSUE_PORTS-1:0] [riscv::VLEN-1:0]   pc_id_ex;
+  logic [NR_ISSUE_PORTS-1:0]                    is_compressed_instr_id_ex;
   // fixed latency units
   logic                     flu_ready_ex_id;
   logic [TRANS_ID_BITS-1:0] flu_trans_id_ex_id;

@@ -16,6 +16,7 @@
 
 module ex_stage import ariane_pkg::*; #(
     parameter int unsigned ASID_WIDTH = 1,
+    parameter int unsigned NR_ISSUE_PORTS = 2,
     parameter ariane_pkg::ariane_cfg_t ArianeCfg = ariane_pkg::ArianeDefaultConfig
 ) (
     input  logic                                   clk_i,    // Clock
@@ -23,11 +24,11 @@ module ex_stage import ariane_pkg::*; #(
     input  logic                                   flush_i,
     input  logic                                   debug_mode_i,
 
-    input  logic [riscv::VLEN-1:0]                 rs1_forwarding_i,
-    input  logic [riscv::VLEN-1:0]                 rs2_forwarding_i,
-    input  fu_data_t                               fu_data_i,
-    input  logic [riscv::VLEN-1:0]                 pc_i,                  // PC of current instruction
-    input  logic                                   is_compressed_instr_i, // we need to know if this was a compressed instruction
+    input  logic [NR_ISSUE_PORTS-1:0][riscv::VLEN-1:0]                 rs1_forwarding_i,
+    input  logic [NR_ISSUE_PORTS-1:0][riscv::VLEN-1:0]                 rs2_forwarding_i,
+    input  fu_data_t [NR_ISSUE_PORTS-1:0]                               fu_data_i,
+    input  logic [NR_ISSUE_PORTS-1:0][riscv::VLEN-1:0]                 pc_i,                  // PC of current instruction
+    input  logic [NR_ISSUE_PORTS-1:0]                                  is_compressed_instr_i, // we need to know if this was a compressed instruction
                                                                           // in order to calculate the next PC on a mis-predict
     // Fixed latency unit(s)
     output riscv::xlen_t                           flu_result_o,
@@ -143,10 +144,16 @@ module ex_stage import ariane_pkg::*; #(
     logic [TRANS_ID_BITS-1:0] mult_trans_id;
     logic mult_valid;
 
+    fu_data_t flu_data;
+    assign flu_data = (fu_data_i[0].fu == ALU || fu_data_i[0].fu == CTRL_FLOW || fu_data_i[0].fu == CSR || fu_data_i[0].fu == MULT) ?
+        fu_data_i[0] : fu_data_i[1];
+
     // 1. ALU (combinatorial)
     // data silence operation
     fu_data_t alu_data;
-    assign alu_data = (alu_valid_i | branch_valid_i) ? fu_data_i  : '0;
+    assign alu_data = (alu_valid_i | branch_valid_i) 
+        ? flu_data
+        : '0;
 
     alu alu_i (
         .clk_i,
@@ -159,13 +166,27 @@ module ex_stage import ariane_pkg::*; #(
     // 2. Branch Unit (combinatorial)
     // we don't silence the branch unit as this is already critical and we do
     // not want to add another layer of logic
+    logic [riscv::VLEN-1:0] pc;
+    fu_data_t bu_data;
+    logic is_compressed_instr;
+    always_comb begin
+        if (fu_data_i[0].fu == CTRL_FLOW) begin
+            pc = pc_i[0];
+            bu_data = fu_data_i[0];
+            is_compressed_instr = is_compressed_instr_i[0];    
+        end else begin 
+            pc = pc_i[1];
+            bu_data = fu_data_i[1];
+            is_compressed_instr = is_compressed_instr_i[1];
+        end
+    end
     branch_unit branch_unit_i (
         .clk_i,
         .rst_ni,
         .debug_mode_i,
-        .fu_data_i,
-        .pc_i,
-        .is_compressed_instr_i,
+        .fu_data_i(bu_data),
+        .pc_i(pc),
+        .is_compressed_instr_i (is_compressed_instr),
         // any functional unit is valid, check that there is no accidental mis-predict
         .fu_valid_i ( alu_valid_i || lsu_valid_i || csr_valid_i || mult_valid_i || fpu_valid_i ) ,
         .branch_valid_i,
@@ -177,12 +198,14 @@ module ex_stage import ariane_pkg::*; #(
         .branch_exception_o ( flu_exception_o )
     );
 
+    fu_data_t csr_data;
+    assign csr_data = flu_data;
     // 3. CSR (sequential)
     csr_buffer csr_buffer_i (
         .clk_i,
         .rst_ni,
         .flush_i,
-        .fu_data_i,
+        .fu_data_i (csr_data),
         .csr_valid_i,
         .csr_ready_o    ( csr_ready    ),
         .csr_result_o   ( csr_result   ),
@@ -196,7 +219,7 @@ module ex_stage import ariane_pkg::*; #(
     always_comb begin
         // Branch result as default case
         flu_result_o = {{riscv::XLEN-riscv::VLEN{1'b0}}, branch_result};
-        flu_trans_id_o = fu_data_i.trans_id;
+        flu_trans_id_o = flu_data.trans_id;
         // ALU result
         if (alu_valid_i) begin
             flu_result_o = alu_result;
@@ -217,7 +240,9 @@ module ex_stage import ariane_pkg::*; #(
     // 4. Multiplication (Sequential)
     fu_data_t mult_data;
     // input silencing of multiplier
-    assign mult_data  = mult_valid_i ? fu_data_i  : '0;
+    assign mult_data  = mult_valid_i 
+        ? (fu_data_i[0].fu == MULT ? fu_data_i[0] : fu_data_i[1])  
+        : '0;
 
     mult i_mult (
         .clk_i,
@@ -237,7 +262,9 @@ module ex_stage import ariane_pkg::*; #(
     generate
         if (FP_PRESENT) begin : fpu_gen
             fu_data_t fpu_data;
-            assign fpu_data  = fpu_valid_i ? fu_data_i  : '0;
+            assign fpu_data  = fpu_valid_i 
+                ? ((fu_data_i[0].fu == FPU || fu_data_i[0].fu == FPU_VEC) ? fu_data_i[0] : fu_data_i[1])  
+                : '0;
 
             fpu_wrap fpu_i (
                 .clk_i,
@@ -269,7 +296,9 @@ module ex_stage import ariane_pkg::*; #(
     // ----------------
     fu_data_t lsu_data;
 
-    assign lsu_data  = lsu_valid_i ? fu_data_i  : '0;
+    assign lsu_data  = lsu_valid_i 
+        ? ((fu_data_i[0].fu == LOAD || fu_data_i[0].fu == STORE) ? fu_data_i[0] : fu_data_i[1])  
+        : '0;
 
     load_store_unit #(
         .ASID_WIDTH ( ASID_WIDTH ),
@@ -326,7 +355,7 @@ module ex_stage import ariane_pkg::*; #(
 		  end else begin
           if (flush_i) begin
               current_instruction_is_sfence_vma <= 1'b0;
-          end else if ((fu_data_i.operator == SFENCE_VMA) && csr_valid_i) begin
+          end else if ((csr_data.operator == SFENCE_VMA) && csr_valid_i) begin
               current_instruction_is_sfence_vma <= 1'b1;
           end
       end
@@ -338,9 +367,9 @@ module ex_stage import ariane_pkg::*; #(
 		    asid_to_be_flushed  <= '0;
 			  vaddr_to_be_flushed <=  '0;
     // if the current instruction in EX_STAGE is a sfence.vma, in the next cycle no writes will happen
-		end else if ((~current_instruction_is_sfence_vma) && (~((fu_data_i.operator == SFENCE_VMA) && csr_valid_i))) begin
-			  vaddr_to_be_flushed <=  rs1_forwarding_i;
-			  asid_to_be_flushed  <= rs2_forwarding_i[ASID_WIDTH-1:0];
+		end else if ((~current_instruction_is_sfence_vma) && (~((csr_data.operator == SFENCE_VMA) && csr_valid_i))) begin
+			  vaddr_to_be_flushed <= fu_data_i[0].fu == CSR ? rs1_forwarding_i[0] : rs1_forwarding_i[1];
+			  asid_to_be_flushed  <= fu_data_i[0].fu == CSR ? rs2_forwarding_i[0][ASID_WIDTH-1:0] : rs2_forwarding_i[1][ASID_WIDTH-1:0];
 		end
 	end
 
