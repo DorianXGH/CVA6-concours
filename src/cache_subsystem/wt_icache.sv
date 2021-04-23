@@ -376,8 +376,8 @@ end else begin : gen_piton_offset
 
   assign vld_we    = (cache_wren | inv_en | flush_en);
 
-  for (genvar i=0;i<ICACHE_SET_ASSOC;i++) begin
-	  always_comb begin
+  always_comb begin
+	  for (int i=0;i<ICACHE_SET_ASSOC;i++) begin
 	  	if (mem_rtrn_i.inv.vld) begin
 			if (mem_rtrn_i.inv.way == i) begin
 				age_wdata[i] = 0;
