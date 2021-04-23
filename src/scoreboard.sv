@@ -116,12 +116,12 @@ module scoreboard #(
     issue_instr_o[0]          = insert_issue_synced ? decoded_instr_i : mem_q[issue_pointer_q].sbe;
     //issue_instr_o[1]          = insert_issue_synced ? '0 : mem_q[issue_pointer_next].sbe;
     // make sure we assign the correct trans ID
-    issue_instr_o[0].trans_id = insert_pointer_q;
+    issue_instr_o[0].trans_id = issue_pointer_q;
     //issue_instr_o[1].trans_id = insert_pointer_next;
     // we are ready if we are not full and don't have any unresolved branches, but it can be
     // the case that we have an unresolved branch which is cleared in that cycle (resolved_branch_i == 1)
-    issue_instr_valid_o[0]    = decoded_instr_valid_i & ~unresolved_branch_i & ~insert_full;
-    decoded_instr_ack_o    = ~insert_full & (~insert_issue_synced | issue_ack_i[0]);
+    issue_instr_valid_o[0]    =  ~flush_unissued_instr_i & (insert_issue_synced ? (decoded_instr_valid_i & ~unresolved_branch_i & ~insert_full) : mem_q[issue_pointer_q].valid & !mem_q[issue_pointer_q].issued);
+    decoded_instr_ack_o    = ~insert_full;
   end
 
   // maintain a FIFO with issued instructions
@@ -131,7 +131,7 @@ module scoreboard #(
     mem_n          = mem_q;
     insert_en       = 1'b0;
 
-    issue_en = issue_ack_i[0] & (~insert_issue_synced | ~insert_full);
+    issue_en = issue_ack_i[0] & (~insert_issue_synced | ~insert_full) & !flush_unissued_instr_i;
 
     // if we got a acknowledge from the issue stage, put this scoreboard entry in the queue
     if (decoded_instr_valid_i && decoded_instr_ack_o && !flush_unissued_instr_i) begin
@@ -146,7 +146,16 @@ module scoreboard #(
 
       issue_en[0] = issue_ack_i[0] & (~insert_issue_synced | ~insert_full);
     end else begin
-      if (insert_issue_synced)
+      if (flush_unissued_instr_i) begin
+        for (int unsigned i = 0; i < NR_ENTRIES; i++) begin
+          if (!mem_q[i].issued) begin
+            mem_n[i].valid        = 1'b0;
+            mem_n[i].issued       = 1'b0;
+            mem_n[i].sbe.valid    = 1'b0;
+            mem_n[i].sbe.ex.valid = 1'b0;
+          end
+        end
+      end else if (insert_issue_synced)
         issue_en[0] = 1'b0;
     end
 
@@ -217,10 +226,10 @@ module scoreboard #(
   );
 
   assign commit_pointer_n[0] = (flush_i) ? '0 : commit_pointer_q[0] + num_commit;
-  assign insert_cnt_n         = (flush_i) ? '0 : insert_cnt_q         - num_commit + insert_en;
-  assign insert_pointer_n     = (flush_i) ? '0 : insert_pointer_q     + insert_en;
+  assign insert_cnt_n        = (flush_i) ? '0 : (flush_unissued_instr_i ? issue_cnt_q - num_commit : insert_cnt_q - num_commit + insert_en);
+  assign insert_pointer_n    = (flush_i) ? '0 : insert_pointer_q     + insert_en;
   assign issue_cnt_n         = (flush_i) ? '0 : issue_cnt_q         - num_commit + issue_en[0] + issue_en[1];
-  assign issue_pointer_n     = (flush_i) ? '0 : issue_pointer_q     + issue_en[0];  // TODO
+  assign issue_pointer_n     = (flush_i) ? '0 : (flush_unissued_instr_i ? insert_pointer_q : issue_pointer_q + issue_en[0]);  // TODO
 
   // precompute offsets for commit slots
   for (genvar k=1; k < NR_COMMIT_PORTS; k++) begin : gen_cnt_incr
