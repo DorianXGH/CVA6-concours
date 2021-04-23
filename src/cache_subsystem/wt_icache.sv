@@ -91,6 +91,8 @@ module wt_icache import ariane_pkg::*; import wt_cache_pkg::*; #(
   logic [ICACHE_AGE_WIDTH-1:0] 		age_rdata [ICACHE_SET_ASSOC-1:0]; // age bits coming from valid regs
   logic 		 		age_req;
   logic 		 		age_we;
+  logic [ICACHE_INDEX_WIDTH-1:0][ICACHE_AGE_WIDTH-1:0] ages_d [ICACHE_SET_ASSOC-1:0];
+  logic [ICACHE_INDEX_WIDTH-1:0][ICACHE_AGE_WIDTH-1:0] ages_q [ICACHE_SET_ASSOC-1:0];
 
   // cpmtroller FSM
   typedef enum logic[2:0] {FLUSH, IDLE, READ, MISS, TLB_MISS, KILL_ATRANS, KILL_MISS} state_e;
@@ -511,7 +513,7 @@ end else begin : gen_piton_offset
       .be_i      ( '1                  ),
       .rdata_o   ( cl_rdata[i]         )
     );
-
+/*
     sram #(
       .DATA_WIDTH ( ICACHE_AGE_WIDTH ),
       .NUM_WORDS  ( ICACHE_NUM_WORDS )
@@ -525,9 +527,18 @@ end else begin : gen_piton_offset
       .be_i 	  ( '1 			),
       .rdata_o    ( age_rdata[i] 	)
     );
-
+*/
+	  always_comb begin
+		ages_d[i] = ages_q[i];
+		if (age_req) begin
+			age_rdata[i] = ages_q[i][cl_index];
+			
+			if (age_we) begin
+				ages_d[i][cl_index] = age_wdata[i];
+			end
+		end
+	  end
   end
-
 
   always_ff @(posedge clk_i or negedge rst_ni) begin : p_regs
     if(!rst_ni) begin
@@ -540,6 +551,9 @@ end else begin : gen_piton_offset
       state_q       <= IDLE;
       cl_offset_q   <= '0;
       repl_way_oh_q <= '0;
+      for (int i=0;i<ICACHE_SET_ASSOC;i++) begin
+	      ages_q[i]    <= '0;
+      end
     end else begin
       cl_tag_q      <= cl_tag_d;
       flush_cnt_q   <= flush_cnt_d;
@@ -550,6 +564,7 @@ end else begin : gen_piton_offset
       state_q       <= state_d;
       cl_offset_q   <= cl_offset_d;
       repl_way_oh_q <= repl_way_oh_d;
+      ages_q 	    <= ages_d;
     end
   end
 
