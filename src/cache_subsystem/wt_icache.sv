@@ -89,8 +89,6 @@ module wt_icache import ariane_pkg::*; import wt_cache_pkg::*; #(
   logic [ICACHE_CL_IDX_WIDTH-1:0]       vld_addr;                     // valid bit
   logic [ICACHE_AGE_WIDTH-1:0]		age_wdata [ICACHE_SET_ASSOC-1:0]; // age bits to write
   logic [ICACHE_AGE_WIDTH-1:0] 		age_rdata [ICACHE_SET_ASSOC-1:0]; // age bits coming from valid regs
-  logic [ICACHE_AGE_WIDTH-1:0] 		age_rdata_d [ICACHE_SET_ASSOC-1:0]; // age bits coming from valid regs
-  logic [ICACHE_AGE_WIDTH-1:0] 		age_rdata_q [ICACHE_SET_ASSOC-1:0]; // age bits coming from valid regs
   logic 		 		age_req;
 
   // cpmtroller FSM
@@ -380,9 +378,9 @@ end else begin : gen_piton_offset
 	  for (int i=0;i<ICACHE_SET_ASSOC;i++) begin
 	  	if (mem_rtrn_i.inv.vld) begin
 			if (mem_rtrn_i.inv.way == i) begin
-				age_wdata[i] = 0;
+				age_wdata[i] = '0;
 			end else begin
-				age_wdata[i] = age_rdata_q[i]+1;
+				age_wdata[i] = age_rdata[i]+1;
 			end
 		end
 
@@ -390,7 +388,7 @@ end else begin : gen_piton_offset
 			if (cl_hit[i]) begin
 				age_wdata[i] = 0;
 			end else begin
-				age_wdata[i] = age_rdata_q[i]+1;
+				age_wdata[i] = age_rdata[i]+1;
 			end
 		end
 
@@ -400,7 +398,6 @@ end else begin : gen_piton_offset
 	  end
   end
 
-  assign age_rdata_d = cache_rden ? age_rdata : age_rdata_q;
   assign age_req = ((|cl_req) | (|cl_hit)) ? 1 : 0;
 
   // assign vld_req   = (vld_we | cache_rden);
@@ -410,7 +407,7 @@ end else begin : gen_piton_offset
   assign update_lfsr   = cache_wren & all_ways_valid;
   always_comb begin
 	  for (int i=0;i<ICACHE_SET_ASSOC;i++) begin
-	  	if (age_rdata_q[i] == ICACHE_SET_ASSOC-1)
+	  	if (age_rdata[i] == ICACHE_SET_ASSOC-1)
 			lru_way = i;
    	  end
   end
@@ -551,7 +548,6 @@ end else begin : gen_piton_offset
       state_q       <= state_d;
       cl_offset_q   <= cl_offset_d;
       repl_way_oh_q <= repl_way_oh_d;
-      age_rdata_q   <= age_rdata_d;
     end
   end
 
