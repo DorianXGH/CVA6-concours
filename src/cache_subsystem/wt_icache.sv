@@ -378,13 +378,13 @@ end else begin : gen_piton_offset
 
   for (genvar i=0;i<ICACHE_SET_ASSOC;i++) begin
 	  always_comb begin
-	  	if (mem_rtrn_i.inv.vld) begin
+	  	//if (mem_rtrn_i.inv.vld) begin
 			if (icache_way_bin2oh(mem_rtrn_i.inv.way)[i]) begin
 				age_wdata[i] = 0;
 			end else begin
 				age_wdata[i] = age_rdata_q[i]+1;
 			end
-		end
+		//end
 /*
 		if (|cl_hit) begin
 			if (cl_hit[i]) begin
