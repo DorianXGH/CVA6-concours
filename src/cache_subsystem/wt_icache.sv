@@ -90,6 +90,7 @@ module wt_icache import ariane_pkg::*; import wt_cache_pkg::*; #(
   logic [ICACHE_AGE_WIDTH-1:0]		age_wdata [ICACHE_SET_ASSOC-1:0]; // age bits to write
   logic [ICACHE_AGE_WIDTH-1:0] 		age_rdata [ICACHE_SET_ASSOC-1:0]; // age bits coming from valid regs
   logic 		 		age_req;
+  logic 		 		age_we;
 
   // cpmtroller FSM
   typedef enum logic[2:0] {FLUSH, IDLE, READ, MISS, TLB_MISS, KILL_ATRANS, KILL_MISS} state_e;
@@ -398,7 +399,8 @@ end else begin : gen_piton_offset
 	  end
   end
 
-  assign age_req = ((|cl_req) | (|cl_hit)) ? 1 : 0;
+  assign age_req = (|cl_req) | (|cl_hit);
+  assign age_we  = vld_we | (|cl_hit);
 
   // assign vld_req   = (vld_we | cache_rden);
 
@@ -517,7 +519,7 @@ end else begin : gen_piton_offset
       .clk_i      ( clk_i 		),
       .rst_ni 	  ( rst_ni 		),
       .req_i 	  ( age_req 		),
-      .we_i 	  ( cl_we 		),
+      .we_i 	  ( age_we 		),
       .addr_i 	  ( cl_index 		),
       .wdata_i 	  ( age_wdata[i] 	),
       .be_i 	  ( '1 			),
