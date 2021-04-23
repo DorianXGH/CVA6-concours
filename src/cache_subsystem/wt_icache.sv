@@ -89,8 +89,8 @@ module wt_icache import ariane_pkg::*; import wt_cache_pkg::*; #(
   logic [ICACHE_CL_IDX_WIDTH-1:0]       vld_addr;                     // valid bit
   logic [ICACHE_AGE_WIDTH-1:0]		age_wdata [ICACHE_SET_ASSOC-1:0]; // age bits to write
   logic [ICACHE_AGE_WIDTH-1:0] 		age_rdata [ICACHE_SET_ASSOC-1:0]; // age bits coming from valid regs
-  logic 		 		age_req;
   logic 		 		age_we;
+  logic [ICACHE_AGE_WIDTH-1:0]		age_zeroed;
   logic [ICACHE_NUM_WORDS-1:0][ICACHE_AGE_WIDTH-1:0] ages_d [ICACHE_SET_ASSOC-1:0];
   logic [ICACHE_NUM_WORDS-1:0][ICACHE_AGE_WIDTH-1:0] ages_q [ICACHE_SET_ASSOC-1:0];
 
@@ -382,16 +382,18 @@ end else begin : gen_piton_offset
 	  	if ((vld_req != '1)&(vld_req != '0)) begin
 			if (vld_req[i]) begin
 				age_wdata[i] = '0;
+				age_zeroed = age_rdata[i];
 			end else begin
-				age_wdata[i] = !(age_rdata[i] == '1) ? age_rdata[i]+1 : '1;
+				age_wdata[i] = (age_rdata[i] < age_zeroed) ? age_rdata[i]+1 : age_rdata[i];
 			end
 		end
 
 		if (|cl_hit) begin
 			if (cl_hit[i]) begin
 				age_wdata[i] = 0;
+				age_zeroed = age_rdata[i];
 			end else begin
-				age_wdata[i] = !(age_rdata[i] == '1) ? age_rdata[i]+1 : '1;
+				age_wdata[i] = (age_rdata[i] < age_zeroed) ? age_rdata[i]+1 : age_rdata[i];
 			end
 		end
 
@@ -553,7 +555,7 @@ end else begin : gen_piton_offset
       cl_offset_q   <= '0;
       repl_way_oh_q <= '0;
       for (int i=0;i<ICACHE_SET_ASSOC;i++) begin
-	      ages_q[i]    <= '0;
+	      ages_q[i]    <= i;
       end
     end else begin
       cl_tag_q      <= cl_tag_d;
