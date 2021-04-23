@@ -89,9 +89,10 @@ module wt_icache import ariane_pkg::*; import wt_cache_pkg::*; #(
   logic [ICACHE_CL_IDX_WIDTH-1:0]       vld_addr;                     // valid bit
   logic [ICACHE_AGE_WIDTH-1:0]		age_wdata [ICACHE_SET_ASSOC-1:0]; // age bits to write
   logic [ICACHE_AGE_WIDTH-1:0] 		age_rdata [ICACHE_SET_ASSOC-1:0]; // age bits coming from valid regs
-  logic [ICACHE_AGE_WIDTH-1:0] 		age_rdata_d [ICACHE_SET_ASSOC-1:0]; // age bits coming from valid regs
-  logic [ICACHE_AGE_WIDTH-1:0] 		age_rdata_q [ICACHE_SET_ASSOC-1:0]; // age bits coming from valid regs
-  logic 		 		age_req;
+  logic 		 		age_we;
+  logic [ICACHE_AGE_WIDTH-1:0]		age_zeroed;
+  logic [ICACHE_NUM_WORDS-1:0][ICACHE_AGE_WIDTH-1:0] ages_d [ICACHE_SET_ASSOC-1:0];
+  logic [ICACHE_NUM_WORDS-1:0][ICACHE_AGE_WIDTH-1:0] ages_q [ICACHE_SET_ASSOC-1:0];
 
   // cpmtroller FSM
   typedef enum logic[2:0] {FLUSH, IDLE, READ, MISS, TLB_MISS, KILL_ATRANS, KILL_MISS} state_e;
@@ -376,21 +377,23 @@ end else begin : gen_piton_offset
 
   assign vld_we    = (cache_wren | inv_en | flush_en);
 
-  for (genvar i=0;i<ICACHE_SET_ASSOC;i++) begin
-	  always_comb begin
-	  	if (mem_rtrn_i.inv.vld) begin
-			if (mem_rtrn_i.inv.way == i) begin
-				age_wdata[i] = 0;
+  always_comb begin
+	  for (int i=0;i<ICACHE_SET_ASSOC;i++) begin
+	  	if ((vld_req != '1)&(vld_req != '0)) begin
+			if (vld_req[i]) begin
+				age_wdata[i] = '0;
+				age_zeroed = age_rdata[i];
 			end else begin
-				age_wdata[i] = age_rdata_q[i]+1;
+				age_wdata[i] = (age_rdata[i] < age_zeroed) ? age_rdata[i]+1 : age_rdata[i];
 			end
 		end
 
 		if (|cl_hit) begin
 			if (cl_hit[i]) begin
 				age_wdata[i] = 0;
+				age_zeroed = age_rdata[i];
 			end else begin
-				age_wdata[i] = age_rdata_q[i]+1;
+				age_wdata[i] = (age_rdata[i] < age_zeroed) ? age_rdata[i]+1 : age_rdata[i];
 			end
 		end
 
@@ -400,8 +403,8 @@ end else begin : gen_piton_offset
 	  end
   end
 
-  assign age_rdata_d = cache_rden ? age_rdata : age_rdata_q;
-  assign age_req = ((|cl_req) | (|cl_hit)) ? 1 : 0;
+  assign age_req = (|cl_req) | (|cl_hit);
+  assign age_we  = vld_we | (|cl_hit);
 
   // assign vld_req   = (vld_we | cache_rden);
 
@@ -410,7 +413,7 @@ end else begin : gen_piton_offset
   assign update_lfsr   = cache_wren & all_ways_valid;
   always_comb begin
 	  for (int i=0;i<ICACHE_SET_ASSOC;i++) begin
-	  	if (age_rdata_q[i] == ICACHE_SET_ASSOC-1)
+	  	if (age_rdata[i] == ICACHE_SET_ASSOC-1)
 			lru_way = i;
    	  end
   end
@@ -512,7 +515,7 @@ end else begin : gen_piton_offset
       .be_i      ( '1                  ),
       .rdata_o   ( cl_rdata[i]         )
     );
-
+/*
     sram #(
       .DATA_WIDTH ( ICACHE_AGE_WIDTH ),
       .NUM_WORDS  ( ICACHE_NUM_WORDS )
@@ -520,15 +523,25 @@ end else begin : gen_piton_offset
       .clk_i      ( clk_i 		),
       .rst_ni 	  ( rst_ni 		),
       .req_i 	  ( age_req 		),
-      .we_i 	  ( cl_we 		),
+      .we_i 	  ( age_we 		),
       .addr_i 	  ( cl_index 		),
       .wdata_i 	  ( age_wdata[i] 	),
       .be_i 	  ( '1 			),
       .rdata_o    ( age_rdata[i] 	)
     );
-
+*/
   end
 
+  always_comb begin
+          for (int i=0;i<ICACHE_SET_ASSOC;i++) begin
+		ages_d[i] = ages_q[i];
+		age_rdata[i] = ages_q[i][vld_addr];
+		
+		if (age_we) begin
+			ages_d[i][vld_addr] = age_wdata[i];
+		end
+	  end
+  end
 
   always_ff @(posedge clk_i or negedge rst_ni) begin : p_regs
     if(!rst_ni) begin
@@ -541,6 +554,9 @@ end else begin : gen_piton_offset
       state_q       <= IDLE;
       cl_offset_q   <= '0;
       repl_way_oh_q <= '0;
+      for (int i=0;i<ICACHE_SET_ASSOC;i++) begin
+	      ages_q[i]    <= i;
+      end
     end else begin
       cl_tag_q      <= cl_tag_d;
       flush_cnt_q   <= flush_cnt_d;
@@ -551,7 +567,7 @@ end else begin : gen_piton_offset
       state_q       <= state_d;
       cl_offset_q   <= cl_offset_d;
       repl_way_oh_q <= repl_way_oh_d;
-      age_rdata_q   <= age_rdata_d;
+      ages_q 	    <= ages_d;
     end
   end
 
