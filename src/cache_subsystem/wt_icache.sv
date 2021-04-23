@@ -377,11 +377,11 @@ end else begin : gen_piton_offset
 
   always_comb begin
 	  for (int i=0;i<ICACHE_SET_ASSOC;i++) begin
-	  	if (mem_rtrn_i.inv.vld) begin
-			if (mem_rtrn_i.inv.way == i) begin
+	  	if ((vld_req != '1)&(vld_req != '0)) begin
+			if (vld_req[i]) begin
 				age_wdata[i] = '0;
 			end else begin
-				age_wdata[i] = age_rdata[i]+1;
+				age_wdata[i] = !(age_rdata[i] == '1) ? age_rdata[i]+1 : '1;
 			end
 		end
 
@@ -389,7 +389,7 @@ end else begin : gen_piton_offset
 			if (cl_hit[i]) begin
 				age_wdata[i] = 0;
 			end else begin
-				age_wdata[i] = age_rdata[i]+1;
+				age_wdata[i] = !(age_rdata[i] == '1) ? age_rdata[i]+1 : '1;
 			end
 		end
 
