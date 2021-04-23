@@ -1,4 +1,4 @@
-CVA6 Student Contest − Team Télécom PaRISC
+# CVA6 Student Contest − Team Télécom PaRISC
 
 # Reports
 
