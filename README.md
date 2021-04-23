@@ -1,4 +1,8 @@
-[![Build Status](https://asanovic.pains-perdus.fr:4269/api/badges/g33kex/Thales-CVA6/status.svg)](https://asanovic.pains-perdus.fr:4269/g33kex/Thales-CVA6)
+CVA6 Student Contest − Team Télécom PaRISC
+
+# Reports
+
+The reports are available in the `reports` folder.
 
 # Getting started
 
