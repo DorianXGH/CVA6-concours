@@ -91,8 +91,8 @@ module wt_icache import ariane_pkg::*; import wt_cache_pkg::*; #(
   logic [ICACHE_AGE_WIDTH-1:0] 		age_rdata [ICACHE_SET_ASSOC-1:0]; // age bits coming from valid regs
   logic 		 		age_req;
   logic 		 		age_we;
-  logic [ICACHE_INDEX_WIDTH-1:0][ICACHE_AGE_WIDTH-1:0] ages_d [ICACHE_SET_ASSOC-1:0];
-  logic [ICACHE_INDEX_WIDTH-1:0][ICACHE_AGE_WIDTH-1:0] ages_q [ICACHE_SET_ASSOC-1:0];
+  logic [ICACHE_NUM_WORDS-1:0][ICACHE_AGE_WIDTH-1:0] ages_d [ICACHE_SET_ASSOC-1:0];
+  logic [ICACHE_NUM_WORDS-1:0][ICACHE_AGE_WIDTH-1:0] ages_q [ICACHE_SET_ASSOC-1:0];
 
   // cpmtroller FSM
   typedef enum logic[2:0] {FLUSH, IDLE, READ, MISS, TLB_MISS, KILL_ATRANS, KILL_MISS} state_e;
@@ -528,14 +528,15 @@ end else begin : gen_piton_offset
       .rdata_o    ( age_rdata[i] 	)
     );
 */
-	  always_comb begin
+  end
+
+  always_comb begin
+          for (int i=0;i<ICACHE_SET_ASSOC;i++) begin
 		ages_d[i] = ages_q[i];
-		if (age_req) begin
-			age_rdata[i] = ages_q[i][cl_index];
-			
-			if (age_we) begin
-				ages_d[i][cl_index] = age_wdata[i];
-			end
+		age_rdata[i] = ages_q[i][vld_addr];
+		
+		if (age_we) begin
+			ages_d[i][vld_addr] = age_wdata[i];
 		end
 	  end
   end
