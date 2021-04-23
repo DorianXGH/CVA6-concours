@@ -89,9 +89,9 @@ module wt_icache import ariane_pkg::*; import wt_cache_pkg::*; #(
   logic [ICACHE_CL_IDX_WIDTH-1:0]       vld_addr;                     // valid bit
   logic [ICACHE_AGE_WIDTH-1:0]		age_wdata [ICACHE_SET_ASSOC-1:0]; // age bits to write
   logic [ICACHE_AGE_WIDTH-1:0] 		age_rdata [ICACHE_SET_ASSOC-1:0]; // age bits coming from valid regs
-  logic 		 		age_we;
-  logic [ICACHE_AGE_WIDTH-1:0]		age_zeroed;
-  logic [ICACHE_NUM_WORDS-1:0][ICACHE_AGE_WIDTH-1:0] ages_d [ICACHE_SET_ASSOC-1:0];
+  logic 		 		age_we; 		      // write enable for age memory
+  logic [ICACHE_AGE_WIDTH-1:0]		age_zeroed;       	      // value of the age of the replaced entry		
+  logic [ICACHE_NUM_WORDS-1:0][ICACHE_AGE_WIDTH-1:0] ages_d [ICACHE_SET_ASSOC-1:0]; // register containing the ages
   logic [ICACHE_NUM_WORDS-1:0][ICACHE_AGE_WIDTH-1:0] ages_q [ICACHE_SET_ASSOC-1:0];
 
   // cpmtroller FSM
@@ -377,9 +377,10 @@ end else begin : gen_piton_offset
 
   assign vld_we    = (cache_wren | inv_en | flush_en);
 
+  // age computation for the LRU policy
   always_comb begin
 	  for (int i=0;i<ICACHE_SET_ASSOC;i++) begin
-	  	if ((vld_req != '1)&(vld_req != '0)) begin
+	  	if ((vld_req != '1)&(vld_req != '0)) begin // in case of cache miss
 			if (vld_req[i]) begin
 				age_wdata[i] = '0;
 				age_zeroed = age_rdata[i];
@@ -388,7 +389,7 @@ end else begin : gen_piton_offset
 			end
 		end
 
-		if (|cl_hit) begin
+		if (|cl_hit) begin     			// in case of cache hit
 			if (cl_hit[i]) begin
 				age_wdata[i] = 0;
 				age_zeroed = age_rdata[i];
@@ -403,7 +404,6 @@ end else begin : gen_piton_offset
 	  end
   end
 
-  assign age_req = (|cl_req) | (|cl_hit);
   assign age_we  = vld_we | (|cl_hit);
 
   // assign vld_req   = (vld_we | cache_rden);
@@ -532,6 +532,7 @@ end else begin : gen_piton_offset
 */
   end
 
+  // modify registers used in LRU
   always_comb begin
           for (int i=0;i<ICACHE_SET_ASSOC;i++) begin
 		ages_d[i] = ages_q[i];
